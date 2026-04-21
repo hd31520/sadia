@@ -29,7 +29,7 @@ function Login() {
 
     try {
       setLoading(true);
-      const payload = await publicPost("/api/auth/login", {
+      const payload = await publicPost("/api/login", {
         username: form.username.trim(),
         password: form.password,
       });
