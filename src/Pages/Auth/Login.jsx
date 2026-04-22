@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router";
+import { Link, Navigate, useNavigate } from "react-router";
 import AuthShell from "./AuthShell";
 import { publicPost, setAuthSession, getAuthToken } from "../../lib/api";
 
@@ -29,7 +29,7 @@ function Login() {
 
     try {
       setLoading(true);
-      const payload = await publicPost("/api/login", {
+      const payload = await publicPost("/api/auth/login", {
         username: form.username.trim(),
         password: form.password,
       });
@@ -47,6 +47,14 @@ function Login() {
     <AuthShell
       title="Welcome back"
       description="Log in to manage sales, workers, products, attendance, and salary data."
+      footer={
+        <p>
+          First-time setup?{" "}
+          <Link to="/register" className="font-medium text-primary hover:underline">
+            Create the first admin account
+          </Link>
+        </p>
+      }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <label className="block text-sm text-muted-foreground">

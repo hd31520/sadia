@@ -13,6 +13,7 @@ import {
 
 function Customers() {
   const [customers, setCustomers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
@@ -64,6 +65,24 @@ function Customers() {
     ];
   }, [customers]);
 
+  const filteredCustomers = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) {
+      return customers;
+    }
+
+    return customers.filter((customer) => {
+      const searchableValues = [
+        customer.name,
+        customer.phone,
+        customer.address,
+        String(customer.due_amount ?? ""),
+      ];
+
+      return searchableValues.some((value) => String(value || "").toLowerCase().includes(query));
+    });
+  }, [customers, searchTerm]);
+
   const handleChange = (event) => {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -105,7 +124,34 @@ function Customers() {
       error={error}
     >
       <div className="space-y-4">
-        <div className="flex justify-end">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Profiles</p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">{customers.length}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Customer records ready for sale linking.</p>
+          </div>
+          <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Due Customers</p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">
+              {customers.filter((customer) => Number(customer.due_amount || 0) > 0).length}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Accounts with open balance.</p>
+          </div>
+          <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Search Results</p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">{filteredCustomers.length}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Current records matching your search.</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search name, phone, address, due..."
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:max-w-sm"
+          />
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
@@ -177,7 +223,7 @@ function Customers() {
           </Dialog>
         </div>
 
-      <div className="overflow-x-auto rounded-lg border border-border/60">
+      <div className="overflow-x-auto rounded-2xl border border-border/60">
         <table className="w-full min-w-full text-sm">
           <thead className="bg-muted/30 text-left">
             <tr>
@@ -188,7 +234,7 @@ function Customers() {
             </tr>
           </thead>
           <tbody>
-            {customers.map((customer) => (
+            {filteredCustomers.map((customer) => (
               <tr key={customer.id} className="border-t border-border/50">
                 <td className="px-3 py-2">{customer.name}</td>
                 <td className="px-3 py-2">{customer.phone || "-"}</td>
@@ -196,6 +242,13 @@ function Customers() {
                 <td className="px-3 py-2">{formatCurrency(customer.due_amount)}</td>
               </tr>
             ))}
+            {!loading && filteredCustomers.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  No customers found.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>

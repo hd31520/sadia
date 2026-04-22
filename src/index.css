@@ -1,6 +1,5 @@
 @import "tailwindcss";
-@import "../node_modules/tw-animate-css/dist/tw-animate.css";
-@import "../node_modules/shadcn/dist/tailwind.css";
+@import "tw-animate-css";
 @import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
@@ -129,10 +128,42 @@
       min-width: 100%;
       overflow-x: hidden;
     }
+  html {
+    scroll-behavior: smooth;
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 26%),
+      radial-gradient(circle at bottom right, rgba(20, 184, 166, 0.1), transparent 24%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent);
     }
   html {
     @apply font-sans;
     }
+  body::selection {
+    background: color-mix(in srgb, var(--primary) 24%, transparent);
+  }
+  button,
+  input,
+  select,
+  textarea {
+    transition:
+      border-color 160ms ease,
+      background-color 160ms ease,
+      color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--primary) 24%, var(--muted));
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }

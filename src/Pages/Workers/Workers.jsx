@@ -35,6 +35,7 @@ function Workers() {
   const today = new Date().toISOString().slice(0, 10);
   const todayWeekday = new Date().toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
   const [workers, setWorkers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
@@ -130,6 +131,30 @@ function Workers() {
       { label: "Month Present", value: String(presentMonth), hint: "Present + late in current month" },
     ];
   }, [workers]);
+
+  const filteredWorkers = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) {
+      return workers;
+    }
+
+    return workers.filter((worker) => {
+      const searchableValues = [
+        worker.name,
+        worker.username,
+        worker.role,
+        worker.today_status,
+        String(worker.present_day_count ?? ""),
+        String(worker.present_count ?? ""),
+        String(worker.half_day_count ?? ""),
+        String(worker.absent_count ?? ""),
+        String(worker.daily_salary ?? ""),
+        String(worker.month_salary ?? ""),
+      ];
+
+      return searchableValues.some((value) => String(value || "").toLowerCase().includes(query));
+    });
+  }, [workers, searchTerm]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -315,7 +340,14 @@ function Workers() {
       error={error}
     >
       <div className="space-y-4">
-        <div className="flex justify-end">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search worker, username, role, salary..."
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:max-w-sm"
+          />
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
@@ -561,7 +593,7 @@ function Workers() {
                   </tr>
                 </thead>
                 <tbody>
-                  {workers.map((worker) => (
+                  {filteredWorkers.map((worker) => (
                     <tr key={worker.id} className="border-t border-border/50 align-top">
                       <td className="px-3 py-2"><span className="block truncate">{worker.name}</span></td>
                       <td className="px-3 py-2"><span className="block truncate">{worker.username}</span></td>
@@ -655,7 +687,7 @@ function Workers() {
                       </td>
                     </tr>
                   ))}
-                  {!loading && workers.length === 0 ? (
+                  {!loading && filteredWorkers.length === 0 ? (
                     <tr>
                       <td colSpan={10} className="px-3 py-6 text-center text-sm text-muted-foreground">
                         No workers found.
@@ -667,7 +699,7 @@ function Workers() {
             </div>
 
             <div className="space-y-3 p-3 md:hidden">
-              {workers.map((worker) => (
+              {filteredWorkers.map((worker) => (
                 <div key={worker.id} className="rounded-lg border border-border/60 bg-card p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -743,7 +775,7 @@ function Workers() {
                   </div>
                 </div>
               ))}
-              {!loading && workers.length === 0 ? (
+              {!loading && filteredWorkers.length === 0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">No workers found.</p>
               ) : null}
             </div>

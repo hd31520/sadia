@@ -1,22 +1,142 @@
-import React, { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
-import { apiGet } from "../../lib/api";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+import SectionPage from "../Shared/SectionPage";
+import { apiDownload, apiGet } from "../../lib/api";
+import { buildDateRangeQuery, getDateRangePreset } from "../../lib/dateRange";
 
 const periods = [
   { value: "daily", label: "Daily" },
   { value: "weekly", label: "Weekly" },
   { value: "monthly", label: "Monthly" },
   { value: "yearly", label: "Yearly" },
+  { value: "custom", label: "Custom" },
   { value: "all", label: "All Time" },
 ];
 
-const formatCurrency = (value) =>
-  new Intl.NumberFormat("en-US", {
+const formatAmount = (value) =>
+  `Tk ${new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Number(value || 0));
+  }).format(Number(value || 0))}`;
 
 const escapeCsvValue = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+
+const normalizeReport = (report) => ({
+  products: {
+    total: Number(report?.products?.total || 0),
+    low_stock: Number(report?.products?.low_stock || 0),
+  },
+  customers: {
+    total: Number(report?.customers?.total || 0),
+  },
+  due: {
+    total: Number(report?.due?.total || 0),
+  },
+  today_sales: {
+    total: Number(report?.today_sales?.total || 0),
+    paid: Number(report?.today_sales?.paid || 0),
+    due: Number(report?.today_sales?.due || 0),
+  },
+  period_profit: {
+    total: Number(report?.period_profit?.total || 0),
+  },
+  recent_sales: Array.isArray(report?.recent_sales) ? report.recent_sales : [],
+  sales_trend: Array.isArray(report?.sales_trend) ? report.sales_trend : [],
+  range: {
+    start_date: report?.range?.start_date || "",
+    end_date: report?.range?.end_date || "",
+  },
+});
+
+const buildReportCsv = (report) => {
+  const summaryRows = [
+    ["Metric", "Value"],
+    ["Range Start", report.range.start_date],
+    ["Range End", report.range.end_date],
+    ["Total Sales", report.today_sales.total],
+    ["Paid", report.today_sales.paid],
+    ["Due", report.today_sales.due],
+    ["Profit", report.period_profit.total],
+    ["Products", report.products.total],
+    ["Low Stock", report.products.low_stock],
+    ["Customers", report.customers.total],
+    ["Customer Due Total", report.due.total],
+  ];
+
+  const trendRows = [
+    [],
+    ["Sales Trend"],
+    ["Date", "Total", "Paid", "Due", "Transactions"],
+    ...report.sales_trend.map((point) => [
+      point.label,
+      point.total,
+      point.paid,
+      point.due,
+      point.transactions,
+    ]),
+  ];
+
+  const recentRows = [
+    [],
+    ["Recent Sales"],
+    ["Date", "Invoice", "Customer", "Total", "Paid", "Due"],
+    ...report.recent_sales.map((sale) => [
+      sale.sale_date?.slice(0, 10) || "",
+      sale.invoice_no || "",
+      sale.customer_name || "Walk-in",
+      sale.total_amount || 0,
+      sale.paid_amount || 0,
+      sale.due_amount || 0,
+    ]),
+  ];
+
+  return [...summaryRows, ...trendRows, ...recentRows]
+    .map((row) => row.map(escapeCsvValue).join(","))
+    .join("\n");
+};
+
+const buildExcelData = (report) => {
+  const summary = [
+    ["Metric", "Value"],
+    ["Range Start", report.range.start_date],
+    ["Range End", report.range.end_date],
+    ["Total Sales", report.today_sales.total],
+    ["Paid", report.today_sales.paid],
+    ["Due", report.today_sales.due],
+    ["Profit", report.period_profit.total],
+    ["Products", report.products.total],
+    ["Low Stock", report.products.low_stock],
+    ["Customers", report.customers.total],
+    ["Customer Due Total", report.due.total],
+  ];
+
+  const trend = [
+    ["Date", "Total", "Paid", "Due", "Transactions"],
+    ...report.sales_trend.map((point) => [
+      point.label,
+      point.total,
+      point.paid,
+      point.due,
+      point.transactions,
+    ]),
+  ];
+
+  const recent = [
+    ["Date", "Invoice", "Customer", "Total", "Paid", "Due"],
+    ...report.recent_sales.map((sale) => [
+      sale.sale_date?.slice(0, 10) || "",
+      sale.invoice_no || "",
+      sale.customer_name || "Walk-in",
+      sale.total_amount || 0,
+      sale.paid_amount || 0,
+      sale.due_amount || 0,
+    ]),
+  ];
+
+  return { summary, trend, recent };
+};
 
 const downloadBlob = (content, filename, mimeType) => {
   const blob = new Blob([content], { type: mimeType });
@@ -30,130 +150,93 @@ const downloadBlob = (content, filename, mimeType) => {
   URL.revokeObjectURL(url);
 };
 
-const buildReportCsv = (report) => {
-  const summaryRows = [
-    ["Metric", "Value"],
-    ["Range Start", report?.range?.start_date || ""],
-    ["Range End", report?.range?.end_date || ""],
-    ["Total Sales", report?.today_sales?.total || 0],
-    ["Paid", report?.today_sales?.paid || 0],
-    ["Due", report?.today_sales?.due || 0],
-    ["Profit", report?.period_profit?.total || 0],
-  ];
-
-  const trendRows = [
-    [],
-    ["Sales Trend"],
-    ["Date", "Total", "Paid", "Due", "Transactions"],
-    ...((report?.sales_trend || []).map((point) => [
-      point.label,
-      point.total,
-      point.paid,
-      point.due,
-      point.transactions,
-    ])),
-  ];
-
-  const recentRows = [
-    [],
-    ["Recent Sales"],
-    ["Date", "Invoice", "Customer", "Total", "Paid", "Due"],
-    ...((report?.recent_sales || []).map((sale) => [
-      sale.sale_date?.slice(0, 10) || "",
-      sale.invoice_no,
-      sale.customer_name || "N/A",
-      sale.total_amount,
-      sale.paid_amount,
-      sale.due_amount,
-    ])),
-  ];
-
-  return [...summaryRows, ...trendRows, ...recentRows]
-    .map((row) => row.map(escapeCsvValue).join(","))
-    .join("\n");
-};
-
-const buildExcelData = (report) => {
-  // Prepare data for Excel sheets
-  const summary = [
-    ["Metric", "Value"],
-    ["Range Start", report?.range?.start_date || ""],
-    ["Range End", report?.range?.end_date || ""],
-    ["Total Sales", report?.today_sales?.total || 0],
-    ["Paid", report?.today_sales?.paid || 0],
-    ["Due", report?.today_sales?.due || 0],
-    ["Profit", report?.period_profit?.total || 0],
-  ];
-
-  const trend = [
-    ["Date", "Total", "Paid", "Due", "Transactions"],
-    ...((report?.sales_trend || []).map((point) => [
-      point.label,
-      point.total,
-      point.paid,
-      point.due,
-      point.transactions,
-    ])),
-  ];
-
-  const recent = [
-    ["Date", "Invoice", "Customer", "Total", "Paid", "Due"],
-    ...((report?.recent_sales || []).map((sale) => [
-      sale.sale_date?.slice(0, 10) || "",
-      sale.invoice_no,
-      sale.customer_name || "N/A",
-      sale.total_amount,
-      sale.paid_amount,
-      sale.due_amount,
-    ])),
-  ];
-
-  return { summary, trend, recent };
-};
-
 const downloadExcel = (report, filename) => {
   const { summary, trend, recent } = buildExcelData(report);
-  const wb = XLSX.utils.book_new();
-  const wsSummary = XLSX.utils.aoa_to_sheet(summary);
-  const wsTrend = XLSX.utils.aoa_to_sheet(trend);
-  const wsRecent = XLSX.utils.aoa_to_sheet(recent);
-  XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
-  XLSX.utils.book_append_sheet(wb, wsTrend, "Sales Trend");
-  XLSX.utils.book_append_sheet(wb, wsRecent, "Recent Sales");
-  XLSX.writeFile(wb, filename);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(summary), "Summary");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(trend), "Sales Trend");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(recent), "Recent Sales");
+  XLSX.writeFile(workbook, filename);
 };
 
-const buildDateRange = (period) => {
-  const now = new Date();
-  let start_date;
-  let end_date;
+const downloadPdf = (report, filename) => {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const rangeLabel = `${report.range.start_date || "-"} to ${report.range.end_date || "-"}`;
 
-  if (period === "daily") {
-    start_date = end_date = now.toISOString().slice(0, 10);
-  } else if (period === "weekly") {
-    const current = new Date(now);
-    const day = current.getDay();
-    const diffToSunday = current.getDate() - day;
-    const weekStart = new Date(current.getFullYear(), current.getMonth(), diffToSunday);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
-    start_date = weekStart.toISOString().slice(0, 10);
-    end_date = weekEnd.toISOString().slice(0, 10);
-  } else if (period === "monthly") {
-    start_date = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-    end_date = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
-  } else if (period === "yearly") {
-    start_date = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
-    end_date = new Date(now.getFullYear(), 11, 31).toISOString().slice(0, 10);
-  }
+  doc.setFontSize(18);
+  doc.text("Sales Report", 40, 40);
+  doc.setFontSize(10);
+  doc.setTextColor(90);
+  doc.text(`Range: ${rangeLabel}`, 40, 58);
 
-  return { start_date, end_date };
+  autoTable(doc, {
+    startY: 78,
+    head: [["Metric", "Value"]],
+    body: [
+      ["Total Sales", formatAmount(report.today_sales.total)],
+      ["Paid", formatAmount(report.today_sales.paid)],
+      ["Due", formatAmount(report.today_sales.due)],
+      ["Profit", formatAmount(report.period_profit.total)],
+      ["Products", String(report.products.total)],
+      ["Low Stock", String(report.products.low_stock)],
+      ["Customers", String(report.customers.total)],
+      ["Customer Due Total", formatAmount(report.due.total)],
+    ],
+    theme: "grid",
+    headStyles: { fillColor: [37, 99, 235] },
+  });
+
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 20,
+    head: [["Date", "Total", "Paid", "Due", "Transactions"]],
+    body: report.sales_trend.length
+      ? report.sales_trend.map((point) => [
+          point.label,
+          formatAmount(point.total),
+          formatAmount(point.paid),
+          formatAmount(point.due),
+          String(point.transactions || 0),
+        ])
+      : [["No data", "-", "-", "-", "-"]],
+    theme: "grid",
+    headStyles: { fillColor: [22, 163, 74] },
+    margin: { left: 40, right: 40 },
+  });
+
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 20,
+    head: [["Date", "Invoice", "Customer", "Total", "Paid", "Due"]],
+    body: report.recent_sales.length
+      ? report.recent_sales.map((sale) => [
+          sale.sale_date?.slice(0, 10) || "-",
+          sale.invoice_no || "-",
+          sale.customer_name || "Walk-in",
+          formatAmount(sale.total_amount),
+          formatAmount(sale.paid_amount),
+          formatAmount(sale.due_amount),
+        ])
+      : [["No recent sales", "-", "-", "-", "-", "-"]],
+    theme: "grid",
+    headStyles: { fillColor: [220, 38, 38] },
+    margin: { left: 40, right: 40 },
+    styles: { cellWidth: "wrap", overflow: "linebreak" },
+    columnStyles: {
+      1: { cellWidth: 90 },
+      2: { cellWidth: pageWidth - 40 - 40 - 90 - 80 - 80 - 80 - 20 },
+      3: { cellWidth: 80 },
+      4: { cellWidth: 80 },
+      5: { cellWidth: 80 },
+    },
+  });
+
+  doc.save(filename);
 };
 
 const SalesTrendChart = ({ data = [] }) => {
   const chartPoints = useMemo(() => {
     if (!data.length) {
-      return { path: "", points: [] };
+      return { path: "", points: [], width: 520, height: 180, padding: 24 };
     }
 
     const width = 520;
@@ -172,16 +255,16 @@ const SalesTrendChart = ({ data = [] }) => {
       .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
       .join(" ");
 
-    return { path, points, width, height, padding, maxValue };
+    return { path, points, width, height, padding };
   }, [data]);
 
   if (!data.length) {
-    return <div className="h-32 flex items-center justify-center text-sm text-slate-400">No sales found for this range.</div>;
+    return <div className="flex h-32 items-center justify-center text-sm text-slate-400">No sales found for this range.</div>;
   }
 
   return (
     <div className="space-y-3">
-      <svg viewBox={`0 0 ${chartPoints.width} ${chartPoints.height}`} className="w-full h-44">
+      <svg viewBox={`0 0 ${chartPoints.width} ${chartPoints.height}`} className="h-44 w-full">
         <defs>
           <linearGradient id="salesTrendFill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#2563eb" stopOpacity="0.28" />
@@ -189,9 +272,7 @@ const SalesTrendChart = ({ data = [] }) => {
           </linearGradient>
         </defs>
         {[0, 1, 2, 3].map((line) => {
-          const y =
-            chartPoints.padding +
-            ((chartPoints.height - chartPoints.padding * 2) / 3) * line;
+          const y = chartPoints.padding + ((chartPoints.height - chartPoints.padding * 2) / 3) * line;
           return (
             <line
               key={line}
@@ -212,15 +293,15 @@ const SalesTrendChart = ({ data = [] }) => {
         {chartPoints.points.map((point) => (
           <g key={point.label}>
             <circle cx={point.x} cy={point.y} r="4" fill="#2563eb" />
-            <title>{`${point.label}: ${formatCurrency(point.total)}`}</title>
+            <title>{`${point.label}: ${formatAmount(point.total)}`}</title>
           </g>
         ))}
       </svg>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-600">
+      <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-4">
         {data.slice(-4).map((point) => (
           <div key={point.label} className="rounded border bg-slate-50 px-2 py-2">
             <div className="font-medium">{point.label}</div>
-            <div>Sales: {formatCurrency(point.total)}</div>
+            <div>Sales: {formatAmount(point.total)}</div>
             <div>Tx: {point.transactions}</div>
           </div>
         ))}
@@ -229,172 +310,330 @@ const SalesTrendChart = ({ data = [] }) => {
   );
 };
 
-
-const Report = () => {
+function Report() {
   const [period, setPeriod] = useState("daily");
-  const [reportData, setReportData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [downloading, setDownloading] = useState(null);
-
-  const { start_date, end_date } = useMemo(() => buildDateRange(period), [period]);
-  const reportParams = useMemo(
-    () => (start_date && end_date ? `?start_date=${start_date}&end_date=${end_date}` : ""),
-    [start_date, end_date]
-  );
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [reportData, setReportData] = useState(() => normalizeReport(null));
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [downloading, setDownloading] = useState("");
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [lastLoadedAt, setLastLoadedAt] = useState("");
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    if (period !== "custom") {
+      const preset = getDateRangePreset(period);
+      setCustomStartDate(preset.startDate);
+      setCustomEndDate(preset.endDate);
+    }
+  }, [period]);
 
-    apiGet(`/api/reports/dashboard${reportParams}`)
-      .then((report) => {
-        setReportData(report);
-      })
-      .catch((err) => setError(err.message || "Failed to load report data"))
-      .finally(() => setLoading(false));
-  }, [reportParams]);
+  const rangeQuery = useMemo(
+    () => buildDateRangeQuery(period, customStartDate, customEndDate),
+    [period, customStartDate, customEndDate]
+  );
+
+  const rangeError = useMemo(() => {
+    if (period !== "custom") {
+      return "";
+    }
+
+    if (!customStartDate || !customEndDate) {
+      return "Select both start and end dates for a custom report.";
+    }
+
+    if (customStartDate > customEndDate) {
+      return "Start date cannot be after end date.";
+    }
+
+    return "";
+  }, [period, customEndDate, customStartDate]);
+
+  const reportParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (rangeQuery.start_date) params.set("start_date", rangeQuery.start_date);
+    if (rangeQuery.end_date) params.set("end_date", rangeQuery.end_date);
+    return params.toString();
+  }, [rangeQuery.end_date, rangeQuery.start_date]);
+
+  const filenameSuffix = useMemo(() => {
+    const start = reportData.range.start_date || rangeQuery.start_date || "report";
+    const end = reportData.range.end_date || rangeQuery.end_date || start;
+    return `${start}-to-${end}`;
+  }, [rangeQuery.end_date, rangeQuery.start_date, reportData.range.end_date, reportData.range.start_date]);
+
+  useEffect(() => {
+    if (rangeError) {
+      setError(rangeError);
+      return;
+    }
+
+    let active = true;
+
+    const loadReport = async () => {
+      try {
+        setLoading(true);
+        setError("");
+        const payload = await apiGet(`/api/reports/dashboard${reportParams ? `?${reportParams}` : ""}`);
+        if (!active) {
+          return;
+        }
+        setReportData(normalizeReport(payload));
+        setLastLoadedAt(new Date().toLocaleString());
+      } catch (err) {
+        if (active) {
+          setError(err.message || "Failed to load report data.");
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadReport();
+
+    return () => {
+      active = false;
+    };
+  }, [rangeError, reportParams, refreshToken]);
+
+  const invoiceCount = reportData.recent_sales.length;
+  const averageSale = invoiceCount > 0 ? reportData.today_sales.total / invoiceCount : 0;
+
+  const stats = useMemo(
+    () => [
+      { label: "Total Sales", value: formatAmount(reportData.today_sales.total), hint: `Paid ${formatAmount(reportData.today_sales.paid)}` },
+      { label: "Outstanding Due", value: formatAmount(reportData.today_sales.due), hint: `Customer due total ${formatAmount(reportData.due.total)}` },
+      { label: "Profit", value: formatAmount(reportData.period_profit.total), hint: "Profit for selected range" },
+      { label: "Products / Low Stock", value: `${reportData.products.total} / ${reportData.products.low_stock}`, hint: "Catalog total and low stock count" },
+      { label: "Customers", value: String(reportData.customers.total), hint: `Recent invoices ${invoiceCount}` },
+      { label: "Average Sale", value: formatAmount(averageSale), hint: "Based on recent loaded invoices" },
+    ],
+    [averageSale, invoiceCount, reportData]
+  );
 
   const handleDownload = async (format) => {
     try {
       setDownloading(format);
-      const filenameSuffix =
-        reportData?.range?.start_date && reportData?.range?.end_date
-          ? `${reportData.range.start_date}-to-${reportData.range.end_date}`
-          : period;
 
-      if (format === "json") {
-        downloadBlob(
-          JSON.stringify(reportData, null, 2),
-          `sales-report-${filenameSuffix}.json`,
-          "application/json;charset=utf-8"
+      if (format === "csv" || format === "json") {
+        await apiDownload(
+          `/api/reports/dashboard/export?${reportParams}${reportParams ? "&" : ""}format=${format}`,
+          `sales-report-${filenameSuffix}.${format}`
         );
-      } else if (format === "excel") {
-        downloadExcel(
-          reportData,
-          `sales-report-${filenameSuffix}.xlsx`
-        );
-      } else {
-        downloadBlob(
-          buildReportCsv(reportData),
-          `sales-report-${filenameSuffix}.csv`,
-          "text/csv;charset=utf-8"
-        );
+        return;
       }
+
+      if (format === "excel") {
+        downloadExcel(reportData, `sales-report-${filenameSuffix}.xlsx`);
+        return;
+      }
+
+      if (format === "pdf") {
+        downloadPdf(reportData, `sales-report-${filenameSuffix}.pdf`);
+        return;
+      }
+
+      downloadBlob(
+        buildReportCsv(reportData),
+        `sales-report-${filenameSuffix}.csv`,
+        "text/csv;charset=utf-8"
+      );
     } catch (downloadError) {
       setError(downloadError.message || "Failed to download report.");
     } finally {
-      setDownloading(null);
+      setDownloading("");
     }
   };
 
-    return (
-      <div className="p-2 sm:p-4 max-w-5xl mx-auto w-full">
-        <h2 className="text-2xl font-bold mb-4 text-center">Sales Report</h2>
-        <div className="mb-4 flex flex-col gap-3 rounded-xl border bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
-            <label htmlFor="period" className="font-medium">Select Period:</label>
-            <select
-              id="period"
-              value={period}
-              onChange={e => setPeriod(e.target.value)}
-              className="border rounded px-2 py-1 w-full sm:w-auto"
-            >
-              {periods.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-            <div className="text-sm text-slate-500">
-              {reportData?.range?.start_date} to {reportData?.range?.end_date}
+  return (
+    <SectionPage
+      title="Report"
+      description="Review range-based sales performance with safer exports and more dependable report loading."
+      stats={stats}
+      loading={loading}
+      error={error}
+    >
+      <div className="space-y-4">
+        <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <label className="text-sm font-medium text-foreground">
+                Period
+                <select
+                  value={period}
+                  onChange={(event) => setPeriod(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                >
+                  {periods.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {period === "custom" ? (
+                <>
+                  <label className="text-sm font-medium text-foreground">
+                    Start Date
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(event) => setCustomStartDate(event.target.value)}
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                    />
+                  </label>
+
+                  <label className="text-sm font-medium text-foreground">
+                    End Date
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(event) => setCustomEndDate(event.target.value)}
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                    />
+                  </label>
+                </>
+              ) : (
+                <div className="sm:col-span-2 xl:col-span-3">
+                  <p className="text-sm font-medium text-foreground">Date Range</p>
+                  <div className="mt-1 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                    {reportData.range.start_date || rangeQuery.start_date || "-"} to{" "}
+                    {reportData.range.end_date || rangeQuery.end_date || "-"}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setRefreshToken((value) => value + 1)}
+                disabled={loading || Boolean(rangeError)}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60"
+              >
+                {loading ? "Refreshing..." : "Refresh"}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDownload("pdf")}
+                disabled={loading || !reportData.range.start_date || Boolean(rangeError)}
+                className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+              >
+                {downloading === "pdf" ? "Generating PDF..." : "Download PDF"}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDownload("excel")}
+                disabled={loading || !reportData.range.start_date || Boolean(rangeError)}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60"
+              >
+                {downloading === "excel" ? "Preparing Excel..." : "Download Excel"}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDownload("csv")}
+                disabled={loading || !reportData.range.start_date || Boolean(rangeError)}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60"
+              >
+                {downloading === "csv" ? "Preparing CSV..." : "Download CSV"}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDownload("json")}
+                disabled={loading || !reportData.range.start_date || Boolean(rangeError)}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60"
+              >
+                {downloading === "json" ? "Preparing JSON..." : "Download JSON"}
+              </button>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => handleDownload("csv")}
-              disabled={downloading !== null}
-              className="rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-            >
-              {downloading === "csv" ? "Downloading CSV..." : "Download CSV"}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDownload("excel")}
-              disabled={downloading !== null}
-              className="rounded bg-green-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-            >
-              {downloading === "excel" ? "Downloading Excel..." : "Download Excel"}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDownload("json")}
-              disabled={downloading !== null}
-              className="rounded border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
-            >
-              {downloading === "json" ? "Downloading JSON..." : "Download JSON"}
-            </button>
+
+          <div className="mt-3 flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Loaded range: {reportData.range.start_date || "-"} to {reportData.range.end_date || "-"}
+            </span>
+            <span>Last updated: {lastLoadedAt || "Not loaded yet"}</span>
           </div>
         </div>
-        {loading ? (
-          <div className="text-center py-8">Loading...</div>
-        ) : error ? (
-          <div className="text-red-500 text-center py-8">{error}</div>
-        ) : (
-          <>
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-              <div className="bg-blue-50 border rounded p-4 flex flex-col items-center">
-                <span className="text-xs text-gray-500">Total Sales</span>
-                <span className="text-lg font-bold">{formatCurrency(reportData?.today_sales?.total ?? 0)}</span>
+
+        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">Sales Trend</h3>
+              <span className="text-xs text-muted-foreground">Day-by-day totals in the selected range</span>
+            </div>
+            <SalesTrendChart data={reportData.sales_trend} />
+          </div>
+
+          <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+            <h3 className="text-sm font-semibold text-foreground">Report Snapshot</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+              <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Sales Collected</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">{formatAmount(reportData.today_sales.paid)}</p>
               </div>
-              <div className="bg-green-50 border rounded p-4 flex flex-col items-center">
-                <span className="text-xs text-gray-500">Paid</span>
-                <span className="text-lg font-bold">{formatCurrency(reportData?.today_sales?.paid ?? 0)}</span>
+              <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Sales Due</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">{formatAmount(reportData.today_sales.due)}</p>
               </div>
-              <div className="bg-red-50 border rounded p-4 flex flex-col items-center">
-                <span className="text-xs text-gray-500">Due</span>
-                <span className="text-lg font-bold">{formatCurrency(reportData?.today_sales?.due ?? 0)}</span>
+              <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Customer Due Total</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">{formatAmount(reportData.due.total)}</p>
+              </div>
+              <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Low Stock Products</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">{reportData.products.low_stock}</p>
               </div>
             </div>
+          </div>
+        </div>
 
-            <div className="border rounded bg-white shadow p-4 mb-4">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-700">Sales Trend</div>
-                <div className="text-xs text-slate-500">Daily totals for the selected range</div>
-              </div>
-              <SalesTrendChart data={reportData?.sales_trend || []} />
-            </div>
+        <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-foreground">Recent Sales</h3>
+            <span className="text-xs text-muted-foreground">Latest {reportData.recent_sales.length} invoices in this report</span>
+          </div>
 
-            {/* Recent Sales Table */}
-            {reportData?.recent_sales && reportData.recent_sales.length > 0 && (
-              <div className="border rounded bg-white shadow p-4 mb-4 overflow-x-auto">
-                <div className="font-semibold mb-2">Recent Sales</div>
-                <table className="min-w-full text-xs">
-                  <thead>
-                    <tr>
-                      <th className="px-2 py-1 text-left">Date</th>
-                      <th className="px-2 py-1 text-left">Invoice</th>
-                      <th className="px-2 py-1 text-left">Customer</th>
-                      <th className="px-2 py-1 text-right">Total</th>
+          {reportData.recent_sales.length ? (
+            <div className="overflow-x-auto rounded-lg border border-border/60">
+              <table className="min-w-full text-sm">
+                <thead className="bg-muted/30 text-left">
+                  <tr>
+                    <th className="px-3 py-2">Date</th>
+                    <th className="px-3 py-2">Invoice</th>
+                    <th className="px-3 py-2">Customer</th>
+                    <th className="px-3 py-2 text-right">Total</th>
+                    <th className="px-3 py-2 text-right">Paid</th>
+                    <th className="px-3 py-2 text-right">Due</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportData.recent_sales.map((sale, index) => (
+                    <tr key={`${sale.id || sale.invoice_no || "sale"}-${index}`} className="border-t border-border/50">
+                      <td className="px-3 py-2">{sale.sale_date?.slice(0, 10) || "-"}</td>
+                      <td className="px-3 py-2">{sale.invoice_no || "-"}</td>
+                      <td className="px-3 py-2">{sale.customer_name || "Walk-in"}</td>
+                      <td className="px-3 py-2 text-right">{formatAmount(sale.total_amount)}</td>
+                      <td className="px-3 py-2 text-right">{formatAmount(sale.paid_amount)}</td>
+                      <td className="px-3 py-2 text-right">{formatAmount(sale.due_amount)}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {reportData.recent_sales.map((sale, idx) => (
-                      <tr key={idx} className="odd:bg-gray-50">
-                        <td className="px-2 py-1">{sale.sale_date?.slice(0, 10) ?? ''}</td>
-                        <td className="px-2 py-1">{sale.invoice_no}</td>
-                        <td className="px-2 py-1">{sale.customer_name || 'N/A'}</td>
-                        <td className="px-2 py-1 text-right">{formatCurrency(sale.total_amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
+              No sales found for this range.
+            </div>
+          )}
+        </div>
       </div>
-    );
-};
+    </SectionPage>
+  );
+}
 
 export default Report;

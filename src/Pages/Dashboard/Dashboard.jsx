@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 import SalesTrendChart from "./SalesTrendChart";
 import SectionPage from "../Shared/SectionPage";
 import { apiGet, formatCurrency } from "../../lib/api";
 import { buildDateRangeQuery, getDateRangePreset } from "../../lib/dateRange";
 
 function Dashboard() {
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [rangeLoading, setRangeLoading] = useState(false);
@@ -97,6 +99,39 @@ function Dashboard() {
     [data, rangeLabel]
   );
 
+  const quickLinks = [
+    { label: "New Sale", hint: "Create invoice", path: "/sale" },
+    { label: "Card Sale", hint: "Fast counter flow", path: "/card" },
+    { label: "Products", hint: "Manage catalog", path: "/product" },
+    { label: "Reports", hint: "Export insights", path: "/report" },
+  ];
+
+  const operationalHighlights = useMemo(() => {
+    const recentSales = data?.recent_sales || [];
+    const highestSale = recentSales.reduce((max, sale) => {
+      const total = Number(sale.total_amount || 0);
+      return total > Number(max?.total_amount || 0) ? sale : max;
+    }, null);
+
+    return [
+      {
+        label: "Recent Invoices",
+        value: String(recentSales.length),
+        hint: "Latest transactions loaded",
+      },
+      {
+        label: "Largest Invoice",
+        value: highestSale ? formatCurrency(highestSale.total_amount) : formatCurrency(0),
+        hint: highestSale?.invoice_no || "No invoices yet",
+      },
+      {
+        label: "Customer Due",
+        value: formatCurrency(data?.due?.total || 0),
+        hint: "Outstanding customer ledger",
+      },
+    ];
+  }, [data]);
+
   return (
     <SectionPage
       title="Dashboard"
@@ -106,6 +141,52 @@ function Dashboard() {
       error={error}
     >
       <div className="space-y-3">
+        <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Quick Actions</p>
+                <h3 className="mt-1 text-lg font-semibold text-foreground">Move Faster</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="rounded-md border border-input px-3 py-2 text-xs font-medium hover:bg-muted"
+              >
+                Reload App
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {quickLinks.map((item) => (
+                <button
+                  key={item.path}
+                  type="button"
+                  onClick={() => navigate(item.path)}
+                  className="rounded-2xl border border-border/60 bg-[linear-gradient(135deg,rgba(255,255,255,0.9),rgba(241,245,249,0.72))] px-4 py-4 text-left transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_16px_30px_rgba(37,99,235,0.12)] dark:bg-[linear-gradient(135deg,rgba(30,41,59,0.95),rgba(15,23,42,0.92))]"
+                >
+                  <p className="text-sm font-semibold text-foreground">{item.label}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{item.hint}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)]">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Operational Pulse</p>
+            <div className="mt-4 space-y-3">
+              {operationalHighlights.map((item) => (
+                <div key={item.label} className="rounded-2xl border border-border/60 bg-muted/20 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-muted-foreground">{item.label}</span>
+                    <span className="text-lg font-semibold text-foreground">{item.value}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{item.hint}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
         <div className="rounded-lg border border-border/60 bg-card p-3">
           <div className="flex flex-wrap items-center gap-2">
             {[ 
@@ -158,14 +239,14 @@ function Dashboard() {
         {/* Sales Trend Chart */}
         {data?.sales_trend && data.sales_trend.length > 0 && (
           <div className="rounded-lg border border-border/60 bg-card p-3">
-            <h3 className="text-sm font-medium text-foreground mb-2">Sales Trend</h3>
+            <h3 className="mb-2 text-sm font-medium text-foreground">Sales Trend</h3>
             <SalesTrendChart data={data.sales_trend} />
           </div>
         )}
 
         <h3 className="text-sm font-medium text-foreground">Recent Sales</h3>
         <div className="overflow-x-auto rounded-lg border border-border/60">
-          <table className="w-full min-w-155 text-sm">
+          <table className="w-full min-w-[40rem] text-sm">
             <thead className="bg-muted/30 text-left">
               <tr>
                 <th className="px-3 py-2">Invoice</th>

@@ -269,7 +269,7 @@ export function AddProductDialog({ onProductAdded }) {
           </div>
 
           {/* Prices */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-xs font-medium text-foreground">
                 Buy Price *
@@ -305,7 +305,7 @@ export function AddProductDialog({ onProductAdded }) {
           </div>
 
           {/* Stock and Barcode */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1">
               <label className="text-xs font-medium text-foreground">
                 Stock Quantity

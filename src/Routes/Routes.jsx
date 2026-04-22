@@ -11,6 +11,7 @@ import Suppliers from "../Pages/Suppliers/Suppliers";
 import Workers from "../Pages/Workers/Workers";
 import CardSale from "../Pages/Card/Card";
 import Login from "../Pages/Auth/Login";
+import Register from "../Pages/Auth/Register";
 import RequireAuth from "../components/RequireAuth";
 import { getAuthToken } from "../lib/api";
 
@@ -20,6 +21,10 @@ const router = createHashRouter([
     {
         path: "/login",
         element: <Login />,
+    },
+    {
+        path: "/register",
+        element: <Register />,
     },
     {
         path: "/",

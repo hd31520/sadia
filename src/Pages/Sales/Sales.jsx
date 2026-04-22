@@ -52,6 +52,7 @@ function Sales() {
     note: "",
   });
   const [barcodeValue, setBarcodeValue] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [scanning, setScanning] = useState(false);
   const [isInstallment, setIsInstallment] = useState(false);
   const [installmentProfitPercent, setInstallmentProfitPercent] = useState("");
@@ -266,6 +267,26 @@ function Sales() {
       { label: "Outstanding", value: formatCurrency(due), hint: "Remaining due in sales" },
     ];
   }, [rangeLabel, sales]);
+
+  const filteredSales = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) {
+      return sales;
+    }
+
+    return sales.filter((sale) => {
+      const searchableValues = [
+        sale.invoice_no,
+        sale.customer_name || "Walk-in",
+        String(sale.total_amount ?? ""),
+        String(sale.paid_amount ?? ""),
+        String(sale.due_amount ?? ""),
+        sale.sale_date ? new Date(sale.sale_date).toLocaleString() : "",
+      ];
+
+      return searchableValues.some((value) => String(value || "").toLowerCase().includes(query));
+    });
+  }, [sales, searchTerm]);
 
   const lineItemsWithProducts = useMemo(
     () =>
@@ -768,7 +789,14 @@ function Sales() {
           ) : null}
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search invoice, customer, amount, date..."
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:max-w-sm"
+          />
           <Dialog
             open={open}
             onOpenChange={(nextOpen) => {
@@ -1061,7 +1089,7 @@ function Sales() {
             </tr>
           </thead>
           <tbody>
-            {sales.map((sale) => (
+            {filteredSales.map((sale) => (
               <tr key={sale.id} className="border-t border-border/50">
                 <td className="px-3 py-2">{sale.invoice_no}</td>
                 <td className="px-3 py-2">{sale.customer_name || "Walk-in"}</td>
@@ -1113,6 +1141,13 @@ function Sales() {
                 </td>
               </tr>
             ))}
+            {!loading && filteredSales.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  No sales found.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>

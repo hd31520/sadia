@@ -13,6 +13,7 @@ import {
 
 function Suppliers() {
   const [suppliers, setSuppliers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [submitError, setSubmitError] = useState("");
@@ -74,6 +75,25 @@ function Suppliers() {
       { label: "Total Amount", value: formatCurrency(totalAmount), hint: "Calculated from stock x buy price" },
     ];
   }, [suppliers]);
+
+  const filteredSuppliers = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) {
+      return suppliers;
+    }
+
+    return suppliers.filter((supplier) => {
+      const searchableValues = [
+        supplier.name,
+        supplier.company_name,
+        supplier.phone,
+        String(supplier.product_count ?? ""),
+        String(supplier.total_amount ?? ""),
+      ];
+
+      return searchableValues.some((value) => String(value || "").toLowerCase().includes(query));
+    });
+  }, [suppliers, searchTerm]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -192,7 +212,14 @@ function Suppliers() {
       error={error}
     >
       <div className="space-y-4">
-        <div className="flex justify-end">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search supplier, company, phone..."
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:max-w-sm"
+          />
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
@@ -365,7 +392,7 @@ function Suppliers() {
               </tr>
             </thead>
             <tbody>
-              {suppliers.map((supplier) => (
+              {filteredSuppliers.map((supplier) => (
                 <tr key={supplier.id} className="border-t border-border/50">
                   <td className="px-3 py-2">{supplier.name}</td>
                   <td className="px-3 py-2">{supplier.company_name || "-"}</td>
@@ -392,7 +419,7 @@ function Suppliers() {
                   </td>
                 </tr>
               ))}
-              {!loading && suppliers.length === 0 ? (
+              {!loading && filteredSuppliers.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-3 py-6 text-center text-sm text-muted-foreground">
                     No suppliers found.

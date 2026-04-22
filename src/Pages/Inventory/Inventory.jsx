@@ -14,6 +14,7 @@ function Inventory() {
   const currentUser = getStoredUser();
   const isAdmin = currentUser?.role === "admin";
   const [products, setProducts] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editOpen, setEditOpen] = useState(false);
@@ -58,6 +59,27 @@ function Inventory() {
     () => products.filter((product) => Number(product.stock || 0) < 10),
     [products]
   );
+
+  const filteredProducts = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) {
+      return products;
+    }
+
+    return products.filter((product) => {
+      const stock = Number(product.stock || 0);
+      const searchableValues = [
+        product.name,
+        product.barcode,
+        product.category,
+        String(stock),
+        stock < 10 ? "low" : "healthy",
+        String(Number(product.cost_price || 0)),
+      ];
+
+      return searchableValues.some((value) => String(value || "").toLowerCase().includes(query));
+    });
+  }, [products, searchTerm]);
 
   const stats = useMemo(() => {
     const totalUnits = products.reduce((acc, product) => acc + Number(product.stock || 0), 0);
@@ -141,6 +163,16 @@ function Inventory() {
           You can view inventory, but only admins can edit stock or delete products.
         </p>
       ) : null}
+
+      <div className="mb-4">
+        <input
+          type="search"
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          placeholder="Search product, barcode, stock, status..."
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:max-w-sm"
+        />
+      </div>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="sm:max-w-lg">
@@ -237,7 +269,7 @@ function Inventory() {
             </tr>
           </thead>
           <tbody>
-            {products.map((product) => {
+            {filteredProducts.map((product) => {
               const stock = Number(product.stock || 0);
               const low = stock < 10;
               return (
@@ -271,6 +303,13 @@ function Inventory() {
                 </tr>
               );
             })}
+            {!loading && filteredProducts.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  No inventory items found.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>

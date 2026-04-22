@@ -12,6 +12,7 @@ import {
 
 function Salary() {
   const [workers, setWorkers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [payOpen, setPayOpen] = useState(false);
@@ -66,6 +67,27 @@ function Salary() {
       })),
     [workers]
   );
+
+  const filteredPayrollRows = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) {
+      return payrollRows;
+    }
+
+    return payrollRows.filter((worker) => {
+      const searchableValues = [
+        worker.name,
+        worker.username,
+        String(worker.daily_salary ?? ""),
+        String(worker.monthSalary ?? ""),
+        String(worker.salaryPaid ?? ""),
+        String(worker.salaryDue ?? ""),
+        String(worker.workUnits ?? ""),
+      ];
+
+      return searchableValues.some((value) => String(value || "").toLowerCase().includes(query));
+    });
+  }, [payrollRows, searchTerm]);
 
   const stats = useMemo(() => {
     const monthSalaryTotal = payrollRows.reduce((sum, worker) => sum + worker.monthSalary, 0);
@@ -190,6 +212,16 @@ function Salary() {
       error={error}
     >
       <div className="space-y-4">
+        <div>
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search worker, username, paid, due..."
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:max-w-sm"
+          />
+        </div>
+
         <Dialog open={payOpen} onOpenChange={setPayOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -268,7 +300,7 @@ function Salary() {
                 </tr>
               </thead>
               <tbody>
-                {payrollRows.map((worker) => (
+                {filteredPayrollRows.map((worker) => (
                   <tr key={worker.id} className="border-t border-border/50 align-top">
                     <td className="px-3 py-2">
                       <span className="block truncate font-medium text-foreground">{worker.name}</span>
@@ -295,7 +327,7 @@ function Salary() {
                     </td>
                   </tr>
                 ))}
-                {!payrollRows.length ? (
+                {!filteredPayrollRows.length ? (
                   <tr>
                     <td colSpan={11} className="px-3 py-6 text-center text-sm text-muted-foreground">
                       No workers found.
@@ -307,7 +339,7 @@ function Salary() {
           </div>
 
           <div className="space-y-3 p-3 md:hidden">
-            {payrollRows.map((worker) => (
+            {filteredPayrollRows.map((worker) => (
               <div key={worker.id} className="rounded-lg border border-border/60 bg-card p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -345,7 +377,7 @@ function Salary() {
               </div>
             ))}
 
-            {!payrollRows.length ? (
+            {!filteredPayrollRows.length ? (
               <p className="py-6 text-center text-sm text-muted-foreground">No workers found.</p>
             ) : null}
           </div>

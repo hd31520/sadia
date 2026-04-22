@@ -3,7 +3,8 @@ import bwipjs from "bwip-js";
 import SectionPage from "../Shared/SectionPage";
 import { apiDelete, apiGet, apiPut, formatCurrency } from "../../lib/api";
 import { AddProductDialog } from "../../components/AddProductDialog";
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, Upload, X } from "lucide-react";
+import { uploadImageToImgbb } from "../../lib/imgbb";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,8 @@ const formatUnitLabel = (unitType) => {
 
 function Products() {
   const [products, setProducts] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [stockFilter, setStockFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editOpen, setEditOpen] = useState(false);
@@ -35,12 +38,19 @@ function Products() {
   const [barcodePrintQty, setBarcodePrintQty] = useState("1");
   const [barcodePrintProduct, setBarcodePrintProduct] = useState(null);
   const [menuOpenId, setMenuOpenId] = useState(null);
+  const [suppliers, setSuppliers] = useState([]);
+  const [loadingSuppliers, setLoadingSuppliers] = useState(false);
+  const [uploadingEditImage, setUploadingEditImage] = useState(false);
+  const [editImagePreview, setEditImagePreview] = useState("");
   const [editForm, setEditForm] = useState({
     name: "",
+    description: "",
     cost_price: "",
     price: "",
     stock: "",
     unit_type: "piece",
+    barcode: "",
+    supplier_id: "",
     image_url: "",
   });
 
@@ -77,23 +87,93 @@ function Products() {
     setProducts((prev) => [newProduct, ...prev]);
   };
 
+  const loadSuppliers = async () => {
+    try {
+      setLoadingSuppliers(true);
+      const payload = await apiGet("/api/suppliers");
+      setSuppliers(payload || []);
+    } catch {
+      setSuppliers([]);
+    } finally {
+      setLoadingSuppliers(false);
+    }
+  };
+
   const handleEditChange = (event) => {
     const { name, value } = event.target;
     setEditForm((prev) => ({ ...prev, [name]: value }));
+    if (name === "image_url") {
+      setEditImagePreview(value);
+    }
+  };
+
+  const handleEditDialogChange = (nextOpen) => {
+    setEditOpen(nextOpen);
+    if (nextOpen) return;
+
+    setActiveProduct(null);
+    setEditError("");
+    setUploadingEditImage(false);
+    setEditImagePreview("");
+    setEditForm({
+      name: "",
+      description: "",
+      cost_price: "",
+      price: "",
+      stock: "",
+      unit_type: "piece",
+      barcode: "",
+      supplier_id: "",
+      image_url: "",
+    });
   };
 
   const handleEditProduct = async (product) => {
+    await loadSuppliers();
     setActiveProduct(product);
     setEditForm({
       name: product.name || "",
+      description: product.description || "",
       cost_price: String(product.cost_price || 0),
       price: String(product.price || 0),
       stock: String(product.stock || 0),
       unit_type: product.unit_type || "piece",
+      barcode: product.barcode || "",
+      supplier_id: product.supplier_id ? String(product.supplier_id) : "",
       image_url: product.image_url || "",
     });
+    setEditImagePreview(product.image_url || "");
     setEditError("");
     setEditOpen(true);
+  };
+
+  const handleEditImageSelect = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setEditError("");
+    setUploadingEditImage(true);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = (loadEvent) => {
+        setEditImagePreview(String(loadEvent.target?.result || ""));
+      };
+      reader.readAsDataURL(file);
+
+      const result = await uploadImageToImgbb(file);
+      setEditForm((prev) => ({ ...prev, image_url: result.url }));
+    } catch (err) {
+      setEditError(err.message || "Failed to upload image");
+      setEditImagePreview(editForm.image_url || "");
+    } finally {
+      setUploadingEditImage(false);
+    }
+  };
+
+  const removeEditImage = () => {
+    setEditImagePreview("");
+    setEditForm((prev) => ({ ...prev, image_url: "" }));
   };
 
   const handleUpdateProduct = async (event) => {
@@ -102,19 +182,23 @@ function Products() {
 
     const payload = {
       name: editForm.name.trim() || activeProduct.name,
+      description: editForm.description.trim() || null,
       cost_price: Number(editForm.cost_price),
       price: Number(editForm.price),
       stock: Number(editForm.stock),
       unit_type: editForm.unit_type,
+      barcode: editForm.barcode.trim() || activeProduct.barcode,
+      supplier_id: editForm.supplier_id ? Number(editForm.supplier_id) : null,
       image_url: editForm.image_url.trim() || null,
     };
 
     if (
+      !payload.name ||
       Number.isNaN(payload.cost_price) ||
       Number.isNaN(payload.price) ||
       Number.isNaN(payload.stock)
     ) {
-      setEditError("Buy price, selling price, and stock must be numbers.");
+      setEditError("Name, buy price, selling price, and stock must be valid.");
       return;
     }
 
@@ -124,6 +208,7 @@ function Products() {
       setProducts((prev) => prev.map((entry) => (entry.id === activeProduct.id ? updated : entry)));
       setEditOpen(false);
       setActiveProduct(null);
+      setEditImagePreview("");
     } catch (err) {
       setEditError(err.message || "Failed to update product");
     } finally {
@@ -292,6 +377,26 @@ function Products() {
     ];
   }, [products]);
 
+  const filteredProducts = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+
+    return products.filter((product) => {
+      const stock = Number(product.stock || 0);
+      const matchesQuery =
+        !query ||
+        [product.name, product.description, product.barcode, product.supplier_name]
+          .some((value) => String(value || "").toLowerCase().includes(query));
+
+      const matchesStock =
+        stockFilter === "all" ||
+        (stockFilter === "low" && stock > 0 && stock < 10) ||
+        (stockFilter === "out" && stock <= 0) ||
+        (stockFilter === "healthy" && stock >= 10);
+
+      return matchesQuery && matchesStock;
+    });
+  }, [products, searchTerm, stockFilter]);
+
   return (
     <SectionPage
       title="Product"
@@ -301,23 +406,101 @@ function Products() {
       error={error}
     >
       {error && (
-        <div style={{ color: 'red', fontWeight: 'bold', marginBottom: 16, fontSize: 18, textAlign: 'center' }}>
+        <div style={{ color: "red", fontWeight: "bold", marginBottom: 16, fontSize: 18, textAlign: "center" }}>
           {error}
         </div>
       )}
       <div className="space-y-4">
-        <div className="flex justify-end">
-          <AddProductDialog onProductAdded={handleProductAdded} />
+        <div className="rounded-2xl border border-border/60 bg-card/90 p-4 shadow-[0_10px_32px_rgba(15,23,42,0.06)]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="grid gap-3 sm:grid-cols-2 lg:w-full lg:max-w-3xl lg:grid-cols-[minmax(0,1.5fr)_minmax(0,0.7fr)]">
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search product, barcode, supplier or description..."
+                className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm text-foreground"
+              />
+              <select
+                value={stockFilter}
+                onChange={(event) => setStockFilter(event.target.value)}
+                className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm text-foreground"
+              >
+                <option value="all">All Stock</option>
+                <option value="healthy">Healthy Stock</option>
+                <option value="low">Low Stock</option>
+                <option value="out">Out of Stock</option>
+              </select>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm("");
+                  setStockFilter("all");
+                }}
+                className="rounded-xl border border-input px-4 py-2.5 text-sm font-medium hover:bg-muted"
+              >
+                Reset
+              </button>
+              <AddProductDialog onProductAdded={handleProductAdded} />
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span className="rounded-full border border-border/60 bg-muted/20 px-3 py-1">
+              Showing {filteredProducts.length} of {products.length}
+            </span>
+            <span className="rounded-full border border-border/60 bg-muted/20 px-3 py-1">
+              Low stock: {products.filter((product) => Number(product.stock || 0) > 0 && Number(product.stock || 0) < 10).length}
+            </span>
+            <span className="rounded-full border border-border/60 bg-muted/20 px-3 py-1">
+              Out of stock: {products.filter((product) => Number(product.stock || 0) <= 0).length}
+            </span>
+          </div>
         </div>
 
-        <Dialog open={editOpen} onOpenChange={setEditOpen}>
-          <DialogContent className="sm:max-w-120">
+        <Dialog open={editOpen} onOpenChange={handleEditDialogChange}>
+          <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Edit Product</DialogTitle>
-              <DialogDescription>Update product information.</DialogDescription>
+              <DialogDescription>Update product information with image, supplier, barcode, pricing and stock.</DialogDescription>
             </DialogHeader>
 
-            <form onSubmit={handleUpdateProduct} className="space-y-3">
+            <form onSubmit={handleUpdateProduct} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Product Image</label>
+
+                {editImagePreview ? (
+                  <div className="relative flex items-center justify-center rounded-lg border border-border/60 bg-muted/30 p-4">
+                    <img src={editImagePreview} alt="Preview" className="max-h-40 max-w-full rounded-md" />
+                    <button
+                      type="button"
+                      onClick={removeEditImage}
+                      disabled={uploadingEditImage}
+                      className="absolute -right-2 -top-2 rounded-full bg-destructive p-1 text-destructive-foreground hover:bg-destructive/90 disabled:opacity-60"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-border/60 bg-muted/20 px-4 py-6 transition-colors hover:border-primary/50 hover:bg-muted/40">
+                    <div className="text-center">
+                      <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {uploadingEditImage ? "Uploading..." : "Click to upload image"}
+                      </p>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditImageSelect}
+                      disabled={uploadingEditImage}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+
               <label className="block text-xs text-muted-foreground">
                 Name
                 <input
@@ -329,7 +512,19 @@ function Products() {
                 />
               </label>
 
-              <div className="grid grid-cols-4 gap-3">
+              <label className="block text-xs text-muted-foreground">
+                Description
+                <textarea
+                  name="description"
+                  value={editForm.description}
+                  onChange={handleEditChange}
+                  rows={3}
+                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                  placeholder="Product description"
+                />
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <label className="block text-xs text-muted-foreground">
                   Buy Price
                   <input
@@ -384,8 +579,40 @@ function Products() {
                 </label>
               </div>
 
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-xs text-muted-foreground">
+                  Barcode
+                  <input
+                    name="barcode"
+                    value={editForm.barcode}
+                    onChange={handleEditChange}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                    placeholder="Barcode"
+                  />
+                </label>
+
+                <label className="block text-xs text-muted-foreground">
+                  Supplier
+                  <select
+                    name="supplier_id"
+                    value={editForm.supplier_id}
+                    onChange={handleEditChange}
+                    disabled={loadingSuppliers}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                  >
+                    <option value="">Select supplier</option>
+                    {suppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                        {supplier.company_name ? ` - ${supplier.company_name}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
               <label className="block text-xs text-muted-foreground">
-                Image Link (optional)
+                Image Link
                 <input
                   name="image_url"
                   type="url"
@@ -411,17 +638,17 @@ function Products() {
               <DialogFooter>
                 <button
                   type="button"
-                  onClick={() => setEditOpen(false)}
+                  onClick={() => handleEditDialogChange(false)}
                   className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={editing}
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
-                >
-                  {editing ? "Saving..." : "Save"}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editing || uploadingEditImage}
+                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+                  >
+                    {editing ? "Saving..." : "Save"}
                 </button>
               </DialogFooter>
             </form>
@@ -429,7 +656,7 @@ function Products() {
         </Dialog>
 
         <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-          <DialogContent className="sm:max-w-105">
+          <DialogContent className="sm:max-w-xl">
             <DialogHeader>
               <DialogTitle>Delete Product</DialogTitle>
               <DialogDescription>
@@ -457,7 +684,7 @@ function Products() {
         </Dialog>
 
         <Dialog open={barcodePrintOpen} onOpenChange={setBarcodePrintOpen}>
-          <DialogContent className="sm:max-w-105">
+          <DialogContent className="sm:max-w-xl">
             <DialogHeader>
               <DialogTitle>Print Barcode Stickers</DialogTitle>
               <DialogDescription>
@@ -499,7 +726,7 @@ function Products() {
         </Dialog>
 
         <div className="rounded-lg border border-border/60">
-          <div className="hidden lg:block">
+          <div className="hidden overflow-x-auto lg:block">
             <table className="w-full table-fixed text-sm">
               <thead className="bg-muted/30 text-left">
                 <tr>
@@ -515,7 +742,7 @@ function Products() {
                 </tr>
               </thead>
               <tbody>
-                {products.map((product) => (
+                {filteredProducts.map((product) => (
                   <tr key={product.id} className="border-t border-border/50 align-top">
                     <td className="px-3 py-2">
                       {product.image_url ? (
@@ -562,7 +789,7 @@ function Products() {
           </div>
 
           <div className="space-y-3 p-3 lg:hidden">
-            {products.map((product) => (
+                {filteredProducts.map((product) => (
               <div key={product.id} className="rounded-lg border border-border/60 bg-card p-3">
                 <div className="flex items-start gap-3">
                   {product.image_url ? (
@@ -591,6 +818,11 @@ function Products() {
                 </div>
               </div>
             ))}
+            {!loading && filteredProducts.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border/60 bg-muted/15 px-4 py-10 text-center text-sm text-muted-foreground">
+                No products match this filter.
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

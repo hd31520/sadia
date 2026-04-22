@@ -1,5 +1,43 @@
 const configuredApiBase = (import.meta.env.VITE_API_BASE_URL || "").trim();
-const API_BASE = configuredApiBase.replace(/\/$/, "");
+const apiPortStart = Number(import.meta.env.VITE_API_PORT_START || 5050);
+const apiPortEnd = Number(import.meta.env.VITE_API_PORT_END || 5059);
+const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
+const browserHostname = typeof window !== "undefined" ? window.location.hostname : "";
+const browserPort = typeof window !== "undefined" ? Number(window.location.port || 0) : 0;
+const isLocalBrowser =
+  browserHostname === "localhost" ||
+  browserHostname === "127.0.0.1" ||
+  browserHostname === "";
+
+function createDefaultApiBases() {
+  const bases = [];
+  const startPort = Math.min(apiPortStart, apiPortEnd);
+  const endPort = Math.max(apiPortStart, apiPortEnd);
+  const browserRunsOnApiPort =
+    Number.isFinite(browserPort) && browserPort >= startPort && browserPort <= endPort;
+
+  if (!configuredApiBase && browserOrigin && (!isLocalBrowser || browserRunsOnApiPort)) {
+    bases.push(browserOrigin);
+  }
+
+  if (isLocalBrowser) {
+    for (let port = startPort; port <= endPort; port += 1) {
+      bases.push(`http://127.0.0.1:${port}`, `http://localhost:${port}`);
+    }
+  }
+
+  return bases;
+}
+
+const API_BASES = Array.from(
+  new Set(
+    [configuredApiBase, ...createDefaultApiBases()]
+      .filter(Boolean)
+      .map((base) => base.replace(/\/$/, ""))
+  )
+);
+
+let activeApiBase = (API_BASES[0] || browserOrigin || "http://127.0.0.1:5050").replace(/\/$/, "");
 
 const TOKEN_KEY = "pos_auth_token";
 const USER_KEY = "pos_auth_user";
@@ -40,16 +78,66 @@ async function parseError(response, fallbackMessage) {
   }
 }
 
-function getApiBase() {
-  if (API_BASE) {
-    return API_BASE;
+function getCandidateBases() {
+  const normalized = Array.from(
+    new Set([activeApiBase, ...API_BASES.map((base) => base.replace(/\/$/, ""))])
+  );
+
+  return normalized;
+}
+
+function isHtmlResponse(response) {
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+  return contentType.includes("text/html");
+}
+
+async function parseJsonBody(response, fallbackMessage) {
+  if (response.status === 204) {
+    return null;
   }
 
-  if (typeof window !== "undefined") {
-    return window.location.origin.replace(/\/$/, "");
+  if (isHtmlResponse(response)) {
+    throw new Error(
+      `${fallbackMessage} The request reached an HTML page instead of the API. Check that the backend is running and that Vite points to the server, not the frontend.`
+    );
   }
 
-  return "";
+  return response.json();
+}
+
+async function requestWithBaseFallback(path, options, onNetworkErrorMessage) {
+  let lastNetworkError = null;
+  let sawHtmlResponse = false;
+
+  for (const base of getCandidateBases()) {
+    try {
+      const response = await fetch(`${base}${path}`, options);
+      if (response.status === 404) {
+        continue;
+      }
+      if (path.startsWith("/api/") && isHtmlResponse(response)) {
+        sawHtmlResponse = true;
+        continue;
+      }
+
+      activeApiBase = base;
+      return response;
+    } catch (error) {
+      lastNetworkError = error;
+    }
+  }
+
+  if (lastNetworkError) {
+    throw new Error(onNetworkErrorMessage(getCandidateBases(), lastNetworkError));
+  }
+
+  if (sawHtmlResponse) {
+    throw new Error(
+      `Unable to reach the API at ${getCandidateBases().join(" or ")}. A frontend HTML page responded instead of JSON.`
+    );
+  }
+
+  return new Response(null, { status: 404, statusText: "Not Found" });
 }
 
 async function authorizedResponse(path, options = {}) {
@@ -58,19 +146,23 @@ async function authorizedResponse(path, options = {}) {
     throw new Error("Not authenticated");
   }
 
-  const base = getApiBase();
   let response;
   try {
-    response = await fetch(`${base}${path}`, {
-      ...options,
-      headers: {
-        ...(options.headers || {}),
-        Authorization: `Bearer ${token}`,
+    response = await requestWithBaseFallback(
+      path,
+      {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          Authorization: `Bearer ${token}`,
+        },
       },
-    });
+      (bases) =>
+        `Unable to connect to server at ${bases.join(" or ")}. Please ensure the backend is running.`
+    );
   } catch {
     throw new Error(
-      `Unable to connect to server at ${base || "the configured API base"}. Please ensure the backend is running.`
+      `Unable to connect to server at ${getCandidateBases().join(" or ")}. Please ensure the backend is running.`
     );
   }
 
@@ -87,19 +179,23 @@ async function authorizedResponse(path, options = {}) {
 }
 
 export async function publicRequest(path, options = {}) {
-  const base = getApiBase();
   let response;
   try {
-    response = await fetch(`${base}${path}`, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {}),
+    response = await requestWithBaseFallback(
+      path,
+      {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
       },
-    });
+      (bases) =>
+        `Unable to connect to server at ${bases.join(" or ")}. Please ensure the backend is running.`
+    );
   } catch {
     throw new Error(
-      `Unable to connect to server at ${base || "the configured API base"}. Please ensure the backend is running.`
+      `Unable to connect to server at ${getCandidateBases().join(" or ")}. Please ensure the backend is running.`
     );
   }
 
@@ -107,11 +203,7 @@ export async function publicRequest(path, options = {}) {
     throw new Error(await parseError(response, `Request failed: ${response.status}`));
   }
 
-  if (response.status === 204) {
-    return null;
-  }
-
-  return response.json();
+  return parseJsonBody(response, "Failed to read API response.");
 }
 
 export const publicPost = (path, body) =>
@@ -130,11 +222,7 @@ export async function apiRequest(path, options = {}) {
     throw new Error(await parseError(response, `Request failed: ${response.status}`));
   }
 
-  if (response.status === 204) {
-    return null;
-  }
-
-  return response.json();
+  return parseJsonBody(response, "Failed to read API response.");
 }
 
 export const apiGet = (path) => apiRequest(path);
