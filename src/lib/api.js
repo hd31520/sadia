@@ -7,7 +7,7 @@ const browserPort = typeof window !== "undefined" ? Number(window.location.port 
 const isLocalBrowser =
   browserHostname === "localhost" ||
   browserHostname === "127.0.0.1" ||
-  browserHostname === "";
+  browserHostname === "https://sadia-server.vercel.app";
 
 function createDefaultApiBases() {
   const bases = [];
