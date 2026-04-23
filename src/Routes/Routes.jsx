@@ -2,6 +2,7 @@ import { Suspense, lazy } from "react";
 import { createHashRouter, Navigate } from "react-router";
 import Root from "../layout/Root";
 import RequireAuth from "../components/RequireAuth";
+import RouteErrorScreen from "../components/RouteErrorScreen";
 import { getAuthToken } from "../lib/api";
 import {
     CART_ROUTE_ALIAS_SEGMENTS,
@@ -39,6 +40,7 @@ const router = createHashRouter([
     {
         path: "/login",
         element: withSuspense(<Login />),
+        errorElement: <RouteErrorScreen />,
     },
     {
         path: "/",
@@ -47,6 +49,7 @@ const router = createHashRouter([
                 <Root />
             </RequireAuth>
         ),
+        errorElement: <RouteErrorScreen />,
         children: [
             {
                 index: true,
