@@ -272,6 +272,7 @@ function CartTriggerBar({ cartCount, totalAmount, dueAmount, customerName, onOpe
 }
 
 function CartDetailsPanel({
+  className,
   titleId,
   customerId,
   customers,
@@ -320,7 +321,7 @@ function CartDetailsPanel({
   onClose,
 }) {
   return (
-    <section className={cn(glassPanelClass, "flex h-full min-h-0 flex-col")}>
+    <section className={cn(glassPanelClass, "flex min-h-0 flex-col", className)}>
       <div className="absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.18),transparent_72%)]" />
 
       <header className="relative shrink-0 border-b border-slate-200/70 px-5 py-5 dark:border-white/10">
@@ -1899,58 +1900,60 @@ function CardSale() {
             </div>
           </div>
 
-          <aside className="hidden min-w-0 xl:block" aria-label="Cart details">
-            <div className="sticky top-24 h-[calc(100vh-7.5rem)]">
-              <CartDetailsPanel
-                customerId={customerId}
-                customers={customers}
-                discountAmount={discountAmount}
-                onDiscountChange={setDiscountAmount}
-                showNewCustomer={showNewCustomer}
-                onToggleNewCustomer={() => {
-                  setShowNewCustomer((prev) => !prev);
-                  setCustomerError("");
-                }}
-                newCustomer={newCustomer}
-                onNewCustomerChange={handleNewCustomerChange}
-                onAddCustomer={handleAddCustomer}
-                addingCustomer={addingCustomer}
-                customerError={customerError}
-                cartRows={cartRows}
-                isInstallment={isInstallment}
-                onInstallmentChange={setIsInstallment}
-                depositAmount={depositAmount}
-                installmentProfitPercent={installmentProfitPercent}
-                dueInput={dueInput}
-                paidAmount={paidAmount}
-                onDepositChange={handleDepositChange}
-                onDepositBlur={normalizeDepositInput}
-                onInstallmentProfitChange={setInstallmentProfitPercent}
-                onInstallmentDueChange={handleDueInputChangeInstallment}
-                onDueBlur={normalizeDueInput}
-                onPaidChange={handlePaidChangeNonInstallment}
-                onPaidBlur={normalizePaidInput}
-                onPaidDueChange={handleDueInputChangeNonInstallment}
-                subTotalAmount={subTotalAmount}
-                discountValue={discountValue}
-                totalAmount={totalAmount}
-                installmentProfitValue={installmentProfitValue}
-                installmentPayableTotal={installmentPayableTotal}
-                paidValue={paidValue}
-                displayDueAmount={displayDueAmount}
-                onCustomerChange={setCustomerId}
-                onDecreaseQuantity={decreaseQuantity}
-                onIncreaseQuantity={increaseQuantity}
-                onChangeQuantity={changeQuantity}
-                onRemoveFromCart={removeFromCart}
-                onClear={resetCartFlow}
-                onComplete={handleCompleteSale}
-                submitting={submitting}
-                submitError={submitError}
-                cartCount={cartCount}
-                customerName={selectedCustomerName}
-              />
-            </div>
+          <aside
+            className="hidden min-w-0 self-start xl:sticky xl:top-24 xl:block"
+            aria-label="Cart details"
+          >
+            <CartDetailsPanel
+              className="h-[calc(100vh-7.5rem)]"
+              customerId={customerId}
+              customers={customers}
+              discountAmount={discountAmount}
+              onDiscountChange={setDiscountAmount}
+              showNewCustomer={showNewCustomer}
+              onToggleNewCustomer={() => {
+                setShowNewCustomer((prev) => !prev);
+                setCustomerError("");
+              }}
+              newCustomer={newCustomer}
+              onNewCustomerChange={handleNewCustomerChange}
+              onAddCustomer={handleAddCustomer}
+              addingCustomer={addingCustomer}
+              customerError={customerError}
+              cartRows={cartRows}
+              isInstallment={isInstallment}
+              onInstallmentChange={setIsInstallment}
+              depositAmount={depositAmount}
+              installmentProfitPercent={installmentProfitPercent}
+              dueInput={dueInput}
+              paidAmount={paidAmount}
+              onDepositChange={handleDepositChange}
+              onDepositBlur={normalizeDepositInput}
+              onInstallmentProfitChange={setInstallmentProfitPercent}
+              onInstallmentDueChange={handleDueInputChangeInstallment}
+              onDueBlur={normalizeDueInput}
+              onPaidChange={handlePaidChangeNonInstallment}
+              onPaidBlur={normalizePaidInput}
+              onPaidDueChange={handleDueInputChangeNonInstallment}
+              subTotalAmount={subTotalAmount}
+              discountValue={discountValue}
+              totalAmount={totalAmount}
+              installmentProfitValue={installmentProfitValue}
+              installmentPayableTotal={installmentPayableTotal}
+              paidValue={paidValue}
+              displayDueAmount={displayDueAmount}
+              onCustomerChange={setCustomerId}
+              onDecreaseQuantity={decreaseQuantity}
+              onIncreaseQuantity={increaseQuantity}
+              onChangeQuantity={changeQuantity}
+              onRemoveFromCart={removeFromCart}
+              onClear={resetCartFlow}
+              onComplete={handleCompleteSale}
+              submitting={submitting}
+              submitError={submitError}
+              cartCount={cartCount}
+              customerName={selectedCustomerName}
+            />
           </aside>
         </div>
       </section>
@@ -2047,6 +2050,7 @@ function CardSale() {
             className="fixed inset-x-3 bottom-4 top-24 z-50 outline-none sm:inset-x-6"
           >
             <CartDetailsPanel
+              className="h-full"
               titleId="mobile-cart-title"
               customerId={customerId}
               customers={customers}
