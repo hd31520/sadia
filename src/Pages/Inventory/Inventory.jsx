@@ -63,7 +63,13 @@ function Inventory() {
   const [deleting, setDeleting] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [columnColors, setColumnColors] = useState(inventoryColumnColorDefaults);
-  const [colorDialog, setColorDialog] = useState(null);
+  const [colorMenu, setColorMenu] = useState(null);
+
+  useEffect(() => {
+    const closeColorMenu = () => setColorMenu(null);
+    window.addEventListener("click", closeColorMenu);
+    return () => window.removeEventListener("click", closeColorMenu);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -253,15 +259,18 @@ function Inventory() {
 
   const openColumnContextMenu = (event, columnKey) => {
     event.preventDefault();
-    setColorDialog({
+    event.stopPropagation();
+    setColorMenu({
       columnKey,
+      x: event.clientX,
+      y: event.clientY,
     });
   };
 
   const setColumnColor = async (columnKey, colorKey) => {
     const nextColors = { ...columnColors, [columnKey]: colorKey };
     setColumnColors(nextColors);
-    setColorDialog(null);
+    setColorMenu(null);
 
     try {
       await apiPut("/api/preferences/inventory-column-colors", {
@@ -474,29 +483,22 @@ function Inventory() {
 
       </div>
 
-      <Dialog
-        open={Boolean(colorDialog)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setColorDialog(null);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Colorize Column</DialogTitle>
-            <DialogDescription>
-              Choose a color for{" "}
-              {columnOptions.find((option) => option.key === colorDialog?.columnKey)?.label || "this column"}.
-            </DialogDescription>
-          </DialogHeader>
+      {colorMenu ? (
+        <div
+          className="fixed z-50 min-w-56 rounded-xl border border-border bg-background p-3 shadow-xl"
+          style={{ left: colorMenu.x, top: colorMenu.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Colorize {columnOptions.find((option) => option.key === colorMenu.columnKey)?.label || "Column"}
+          </p>
 
           <div className="grid grid-cols-2 gap-2">
             {columnColorChoices.map((option) => (
               <button
                 key={option.key}
                 type="button"
-                onClick={() => setColumnColor(colorDialog?.columnKey, option.key)}
+                onClick={() => setColumnColor(colorMenu.columnKey, option.key)}
                 className="rounded-md border border-input px-3 py-2 text-sm font-medium hover:bg-muted"
               >
                 {option.label}
@@ -504,31 +506,31 @@ function Inventory() {
             ))}
           </div>
 
-          <label className="block text-sm font-medium text-foreground">
+          <label className="mt-3 block text-sm font-medium text-foreground">
             Custom Color
             <input
               type="color"
               value={
-                isCustomHexColor(columnColors[colorDialog?.columnKey])
-                  ? columnColors[colorDialog?.columnKey]
+                isCustomHexColor(columnColors[colorMenu.columnKey])
+                  ? columnColors[colorMenu.columnKey]
                   : "#d9f99d"
               }
-              onChange={(event) => setColumnColor(colorDialog?.columnKey, event.target.value)}
+              onChange={(event) => setColumnColor(colorMenu.columnKey, event.target.value)}
               className="mt-2 block h-11 w-full cursor-pointer rounded-md border border-input bg-background"
             />
           </label>
 
-          <DialogFooter>
+          <div className="mt-3 flex justify-end">
             <button
               type="button"
-              onClick={() => setColorDialog(null)}
+              onClick={() => setColorMenu(null)}
               className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
             >
               Close
             </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </div>
+      ) : null}
       </>
     </SectionPage>
   );
