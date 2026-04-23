@@ -18,6 +18,12 @@ export default defineConfig({
   server: {
     port: Number(process.env.VITE_DEV_SERVER_PORT || 5173),
     strictPort: false,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:5050',
+        changeOrigin: true,
+      },
+    },
     hmr: {
       overlay: false,
     },
