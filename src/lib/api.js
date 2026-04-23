@@ -23,9 +23,29 @@ function getBrowserOriginBase() {
 function createDefaultApiBases() {
   const bases = [];
   const browserOriginBase = getBrowserOriginBase();
+  const configuredBaseHost = (() => {
+    try {
+      return configuredApiBase ? new URL(configuredApiBase).host.toLowerCase() : "";
+    } catch {
+      return "";
+    }
+  })();
 
   if (browserOriginBase) {
-    bases.push(browserOriginBase);
+    const browserHost = (() => {
+      try {
+        return new URL(browserOriginBase).host.toLowerCase();
+      } catch {
+        return "";
+      }
+    })();
+
+    const shouldTryBrowserOriginFirst =
+      !configuredApiBase || !configuredBaseHost || configuredBaseHost === browserHost || isDev;
+
+    if (shouldTryBrowserOriginFirst) {
+      bases.push(browserOriginBase);
+    }
   }
 
   if (!isDev) {
