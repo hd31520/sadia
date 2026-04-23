@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import SectionPage from "../Shared/SectionPage";
-import { apiGet, formatCurrency } from "../../lib/api";
+import { apiGet, apiPost, formatCurrency } from "../../lib/api";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
 
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -31,6 +39,9 @@ function WorkerAttendanceHistory() {
   const [salaryPayments, setSalaryPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedCell, setSelectedCell] = useState(null);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [updateError, setUpdateError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -117,6 +128,35 @@ function WorkerAttendanceHistory() {
     [summary]
   );
 
+  const handleSelectCell = (cell) => {
+    setSelectedCell(cell);
+    setUpdateError("");
+  };
+
+  const handleUpdateAttendance = async (status) => {
+    if (!selectedCell?.date) {
+      return;
+    }
+
+    try {
+      setUpdatingStatus(true);
+      setUpdateError("");
+      await apiPost("/api/attendance", {
+        user_id: Number(workerId),
+        date: selectedCell.date,
+        status,
+      });
+
+      const calendarPayload = await apiGet(`/api/attendance/calendar?user_id=${workerId}&month=${month}`);
+      setPayload(calendarPayload || null);
+      setSelectedCell(null);
+    } catch (err) {
+      setUpdateError(err.message || "Failed to update attendance");
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
   return (
     <SectionPage
       title="Worker Attendance History"
@@ -161,8 +201,10 @@ function WorkerAttendanceHistory() {
               cell.type === "empty" ? (
                 <div key={cell.key} className="min-h-26 rounded-md border border-dashed border-border/50 bg-muted/15" />
               ) : (
-                <div
+                <button
+                  type="button"
                   key={cell.key}
+                  onClick={() => handleSelectCell(cell)}
                   className={`min-h-26 rounded-md border p-2 text-xs ${statusStyles[cell.status] || statusStyles.absent}`}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -177,11 +219,64 @@ function WorkerAttendanceHistory() {
                   <p className="mt-1 text-[11px] text-current/80">
                     {cell.record?.check_out_time ? `Out: ${cell.record.check_out_time}` : "No check-out"}
                   </p>
-                </div>
+                </button>
               )
             )}
           </div>
         </div>
+
+        <Dialog open={Boolean(selectedCell)} onOpenChange={(open) => (!open ? setSelectedCell(null) : null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Update Attendance</DialogTitle>
+              <DialogDescription>
+                {selectedCell?.date
+                  ? `Choose attendance for ${worker.name || "this worker"} on ${selectedCell.date}. Auto-present still works for regular days, and you can manually switch this date to present or absent.`
+                  : "Choose attendance status."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div className="rounded-md border border-border/60 bg-muted/20 p-3 text-sm">
+                <p className="font-medium text-foreground">{worker.name || "Worker"}</p>
+                <p className="text-xs text-muted-foreground">
+                  Current status: {statusLabels[selectedCell?.status] || "Absent"}
+                </p>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => handleUpdateAttendance("present")}
+                  disabled={updatingStatus}
+                  className="rounded-md border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-700 hover:bg-emerald-500/15 disabled:opacity-60"
+                >
+                  {updatingStatus ? "Saving..." : "Mark Present"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateAttendance("absent")}
+                  disabled={updatingStatus}
+                  className="rounded-md border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-700 hover:bg-rose-500/15 disabled:opacity-60"
+                >
+                  {updatingStatus ? "Saving..." : "Mark Absent"}
+                </button>
+              </div>
+
+              {updateError ? <p className="text-sm text-destructive">{updateError}</p> : null}
+            </div>
+
+            <DialogFooter>
+              <button
+                type="button"
+                onClick={() => setSelectedCell(null)}
+                className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+              >
+                Close
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className="rounded-lg border border-border/60">
           <div className="border-b border-border/60 px-4 py-3">
