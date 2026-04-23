@@ -63,7 +63,7 @@ function Inventory() {
   const [deleting, setDeleting] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [columnColors, setColumnColors] = useState(inventoryColumnColorDefaults);
-  const [contextMenu, setContextMenu] = useState(null);
+  const [colorDialog, setColorDialog] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -92,12 +92,6 @@ function Inventory() {
     return () => {
       active = false;
     };
-  }, []);
-
-  useEffect(() => {
-    const closeContextMenu = () => setContextMenu(null);
-    window.addEventListener("click", closeContextMenu);
-    return () => window.removeEventListener("click", closeContextMenu);
   }, []);
 
   useEffect(() => {
@@ -259,17 +253,15 @@ function Inventory() {
 
   const openColumnContextMenu = (event, columnKey) => {
     event.preventDefault();
-    setContextMenu({
+    setColorDialog({
       columnKey,
-      x: event.clientX,
-      y: event.clientY,
     });
   };
 
   const setColumnColor = async (columnKey, colorKey) => {
     const nextColors = { ...columnColors, [columnKey]: colorKey };
     setColumnColors(nextColors);
-    setContextMenu(null);
+    setColorDialog(null);
 
     try {
       await apiPut("/api/preferences/inventory-column-colors", {
@@ -416,11 +408,14 @@ function Inventory() {
           <tbody>
             {filteredProducts.map((product) => {
               const stock = Number(product.stock || 0);
-              const low = stock < 10;
+              const outOfStock = stock <= 0;
+              const low = stock > 0 && stock < 10;
               const selected = product.id === selectedProductId;
-              const rowTone = low
-                ? "bg-rose-500/8 hover:bg-rose-500/12"
-                : "bg-emerald-500/8 hover:bg-emerald-500/12";
+              const rowTone = outOfStock
+                ? "bg-rose-500/10 hover:bg-rose-500/15"
+                : low
+                  ? "bg-amber-400/14 hover:bg-amber-400/20"
+                  : "bg-emerald-500/8 hover:bg-emerald-500/12";
               const selectedTone = selected ? "outline outline-2 outline-primary/60 outline-offset-[-2px]" : "";
               return (
                 <tr
@@ -429,10 +424,16 @@ function Inventory() {
                   className={`border-t border-border/50 transition-colors ${rowTone} ${selectedTone}`}
                 >
                   <td className={`px-3 py-2 ${getColumnToneClassName("product")}`} style={getColumnToneStyle("product")}>{product.name}</td>
-                  <td className={`px-3 py-2 font-medium ${low ? "text-rose-700" : "text-emerald-700"} ${getColumnToneClassName("stock")}`} style={getColumnToneStyle("stock")}>{stock}</td>
+                  <td className={`px-3 py-2 font-medium ${outOfStock ? "text-rose-700" : low ? "text-amber-700" : "text-emerald-700"} ${getColumnToneClassName("stock")}`} style={getColumnToneStyle("stock")}>{stock}</td>
                   <td className={`px-3 py-2 ${getColumnToneClassName("status")}`} style={getColumnToneStyle("status")}>
-                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${low ? "border-rose-500/25 bg-rose-500/10 text-rose-700" : "border-emerald-500/25 bg-emerald-500/10 text-emerald-700"}`}>
-                      {low ? "Low Stock" : "Healthy"}
+                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${
+                      outOfStock
+                        ? "border-rose-500/25 bg-rose-500/10 text-rose-700"
+                        : low
+                          ? "border-amber-500/30 bg-amber-500/12 text-amber-700"
+                          : "border-emerald-500/25 bg-emerald-500/10 text-emerald-700"
+                    }`}>
+                      {outOfStock ? "Out of Stock" : low ? "Low Stock" : "Healthy"}
                     </span>
                   </td>
                   <td className={`px-3 py-2 ${getColumnToneClassName("cost")}`} style={getColumnToneStyle("cost")}>{formatCurrency(stock * Number(product.cost_price || 0))}</td>
@@ -471,41 +472,63 @@ function Inventory() {
           </tbody>
         </table>
 
-        {contextMenu ? (
-          <div
-            className="fixed z-50 min-w-44 rounded-lg border border-border bg-background p-1 shadow-xl"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <p className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Colorize {columnOptions.find((option) => option.key === contextMenu.columnKey)?.label || "Column"}
-            </p>
+      </div>
+
+      <Dialog
+        open={Boolean(colorDialog)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setColorDialog(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Colorize Column</DialogTitle>
+            <DialogDescription>
+              Choose a color for{" "}
+              {columnOptions.find((option) => option.key === colorDialog?.columnKey)?.label || "this column"}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-2">
             {columnColorChoices.map((option) => (
               <button
                 key={option.key}
                 type="button"
-                onClick={() => setColumnColor(contextMenu.columnKey, option.key)}
-                className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium hover:bg-muted"
+                onClick={() => setColumnColor(colorDialog?.columnKey, option.key)}
+                className="rounded-md border border-input px-3 py-2 text-sm font-medium hover:bg-muted"
               >
                 {option.label}
               </button>
             ))}
-            <label className="block px-3 py-2 text-xs font-medium text-foreground">
-              Custom
-              <input
-                type="color"
-                value={
-                  isCustomHexColor(columnColors[contextMenu.columnKey])
-                    ? columnColors[contextMenu.columnKey]
-                    : "#d9f99d"
-                }
-                onChange={(event) => setColumnColor(contextMenu.columnKey, event.target.value)}
-                className="mt-2 block h-9 w-full cursor-pointer rounded-md border border-input bg-background"
-              />
-            </label>
           </div>
-        ) : null}
-      </div>
+
+          <label className="block text-sm font-medium text-foreground">
+            Custom Color
+            <input
+              type="color"
+              value={
+                isCustomHexColor(columnColors[colorDialog?.columnKey])
+                  ? columnColors[colorDialog?.columnKey]
+                  : "#d9f99d"
+              }
+              onChange={(event) => setColumnColor(colorDialog?.columnKey, event.target.value)}
+              className="mt-2 block h-11 w-full cursor-pointer rounded-md border border-input bg-background"
+            />
+          </label>
+
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setColorDialog(null)}
+              className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+            >
+              Close
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       </>
     </SectionPage>
   );
