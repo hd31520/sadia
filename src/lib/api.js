@@ -24,10 +24,6 @@ function createDefaultApiBases() {
   const bases = [];
   const browserOriginBase = getBrowserOriginBase();
 
-  if (configuredApiBase && !isDev) {
-    return bases;
-  }
-
   if (browserOriginBase) {
     bases.push(browserOriginBase);
   }
@@ -48,7 +44,7 @@ function createDefaultApiBases() {
 
 const API_BASES = Array.from(
   new Set(
-    [configuredApiBase, ...createDefaultApiBases()]
+    [...createDefaultApiBases(), configuredApiBase]
       .filter(Boolean)
       .map((base) => base.replace(/\/$/, ""))
   )
