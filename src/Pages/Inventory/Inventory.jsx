@@ -34,6 +34,18 @@ const columnColorPresets = {
   blue: "bg-sky-500/10",
 };
 
+const columnColorChoices = [
+  { key: "default", label: "Default" },
+  { key: "green", label: "Green" },
+  { key: "red", label: "Red" },
+  { key: "amber", label: "Amber" },
+  { key: "blue", label: "Blue" },
+];
+
+function isCustomHexColor(value) {
+  return /^#[0-9a-f]{6}$/i.test(String(value || "").trim());
+}
+
 function Inventory() {
   const currentUser = getStoredUser();
   const isAdmin = currentUser?.role === "admin";
@@ -107,7 +119,8 @@ function Inventory() {
             ...Object.fromEntries(
               Object.entries(nextColors).filter(
                 ([columnKey, colorKey]) =>
-                  columnKey in inventoryColumnColorDefaults && colorKey in columnColorPresets
+                  columnKey in inventoryColumnColorDefaults &&
+                  (colorKey in columnColorPresets || isCustomHexColor(colorKey))
               )
             ),
           }));
@@ -235,15 +248,13 @@ function Inventory() {
       return;
     }
 
+    event.preventDefault();
     const currentIndex = filteredProducts.findIndex((product) => product.id === selectedProductId);
     const safeIndex = currentIndex >= 0 ? currentIndex : 0;
     const direction = event.deltaY > 0 ? 1 : -1;
     const nextIndex = Math.min(Math.max(safeIndex + direction, 0), filteredProducts.length - 1);
 
-    if (nextIndex !== safeIndex) {
-      event.preventDefault();
-      setSelectedProductId(filteredProducts[nextIndex].id);
-    }
+    setSelectedProductId(filteredProducts[nextIndex].id);
   };
 
   const openColumnContextMenu = (event, columnKey) => {
@@ -269,7 +280,15 @@ function Inventory() {
     }
   };
 
-  const getColumnTone = (columnKey) => columnColorPresets[columnColors[columnKey]] || "";
+  const getColumnToneClassName = (columnKey) => {
+    const colorValue = columnColors[columnKey];
+    return colorValue in columnColorPresets ? columnColorPresets[colorValue] : "";
+  };
+
+  const getColumnToneStyle = (columnKey) => {
+    const colorValue = columnColors[columnKey];
+    return isCustomHexColor(colorValue) ? { backgroundColor: `${colorValue}22` } : undefined;
+  };
 
   return (
     <SectionPage
@@ -381,16 +400,17 @@ function Inventory() {
 
       <div
         className="relative overflow-x-auto rounded-lg border border-border/60"
+        onWheelCapture={handleInventoryWheel}
         onWheel={handleInventoryWheel}
       >
         <table className="w-full min-w-full text-sm">
           <thead className="bg-muted/30 text-left">
             <tr>
-              <th onContextMenu={(event) => openColumnContextMenu(event, "product")} className={`px-3 py-2 ${getColumnTone("product")}`}>Product</th>
-              <th onContextMenu={(event) => openColumnContextMenu(event, "stock")} className={`px-3 py-2 ${getColumnTone("stock")}`}>Stock</th>
-              <th onContextMenu={(event) => openColumnContextMenu(event, "status")} className={`px-3 py-2 ${getColumnTone("status")}`}>Status</th>
-              <th onContextMenu={(event) => openColumnContextMenu(event, "cost")} className={`px-3 py-2 ${getColumnTone("cost")}`}>Cost Value</th>
-              <th onContextMenu={(event) => openColumnContextMenu(event, "action")} className={`px-3 py-2 ${getColumnTone("action")}`}>Action</th>
+              <th onContextMenu={(event) => openColumnContextMenu(event, "product")} className={`px-3 py-2 ${getColumnToneClassName("product")}`} style={getColumnToneStyle("product")}>Product</th>
+              <th onContextMenu={(event) => openColumnContextMenu(event, "stock")} className={`px-3 py-2 ${getColumnToneClassName("stock")}`} style={getColumnToneStyle("stock")}>Stock</th>
+              <th onContextMenu={(event) => openColumnContextMenu(event, "status")} className={`px-3 py-2 ${getColumnToneClassName("status")}`} style={getColumnToneStyle("status")}>Status</th>
+              <th onContextMenu={(event) => openColumnContextMenu(event, "cost")} className={`px-3 py-2 ${getColumnToneClassName("cost")}`} style={getColumnToneStyle("cost")}>Cost Value</th>
+              <th onContextMenu={(event) => openColumnContextMenu(event, "action")} className={`px-3 py-2 ${getColumnToneClassName("action")}`} style={getColumnToneStyle("action")}>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -408,15 +428,15 @@ function Inventory() {
                   onClick={() => setSelectedProductId(product.id)}
                   className={`border-t border-border/50 transition-colors ${rowTone} ${selectedTone}`}
                 >
-                  <td className={`px-3 py-2 ${getColumnTone("product")}`}>{product.name}</td>
-                  <td className={`px-3 py-2 font-medium ${low ? "text-rose-700" : "text-emerald-700"} ${getColumnTone("stock")}`}>{stock}</td>
-                  <td className={`px-3 py-2 ${getColumnTone("status")}`}>
+                  <td className={`px-3 py-2 ${getColumnToneClassName("product")}`} style={getColumnToneStyle("product")}>{product.name}</td>
+                  <td className={`px-3 py-2 font-medium ${low ? "text-rose-700" : "text-emerald-700"} ${getColumnToneClassName("stock")}`} style={getColumnToneStyle("stock")}>{stock}</td>
+                  <td className={`px-3 py-2 ${getColumnToneClassName("status")}`} style={getColumnToneStyle("status")}>
                     <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${low ? "border-rose-500/25 bg-rose-500/10 text-rose-700" : "border-emerald-500/25 bg-emerald-500/10 text-emerald-700"}`}>
                       {low ? "Low Stock" : "Healthy"}
                     </span>
                   </td>
-                  <td className={`px-3 py-2 ${getColumnTone("cost")}`}>{formatCurrency(stock * Number(product.cost_price || 0))}</td>
-                  <td className={`px-3 py-2 ${getColumnTone("action")}`}>
+                  <td className={`px-3 py-2 ${getColumnToneClassName("cost")}`} style={getColumnToneStyle("cost")}>{formatCurrency(stock * Number(product.cost_price || 0))}</td>
+                  <td className={`px-3 py-2 ${getColumnToneClassName("action")}`} style={getColumnToneStyle("action")}>
                     {isAdmin ? (
                       <div className="flex items-center gap-2">
                         <button
@@ -460,13 +480,7 @@ function Inventory() {
             <p className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Colorize {columnOptions.find((option) => option.key === contextMenu.columnKey)?.label || "Column"}
             </p>
-            {[
-              { key: "default", label: "Default" },
-              { key: "green", label: "Green" },
-              { key: "red", label: "Red" },
-              { key: "amber", label: "Amber" },
-              { key: "blue", label: "Blue" },
-            ].map((option) => (
+            {columnColorChoices.map((option) => (
               <button
                 key={option.key}
                 type="button"
@@ -476,6 +490,19 @@ function Inventory() {
                 {option.label}
               </button>
             ))}
+            <label className="block px-3 py-2 text-xs font-medium text-foreground">
+              Custom
+              <input
+                type="color"
+                value={
+                  isCustomHexColor(columnColors[contextMenu.columnKey])
+                    ? columnColors[contextMenu.columnKey]
+                    : "#d9f99d"
+                }
+                onChange={(event) => setColumnColor(contextMenu.columnKey, event.target.value)}
+                className="mt-2 block h-9 w-full cursor-pointer rounded-md border border-input bg-background"
+              />
+            </label>
           </div>
         ) : null}
       </div>
