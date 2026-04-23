@@ -52,6 +52,10 @@ function Root() {
   }, [storedUser?.role]);
 
   const currentLabel = useMemo(() => {
+    if (/^\/worker\/[^/]+\/history$/i.test(location.pathname)) {
+      return "Worker History";
+    }
+
     const found = visibleNavItems.find((item) => item.to === location.pathname);
     return found ? found.label : "Dashboard";
   }, [location.pathname, visibleNavItems]);

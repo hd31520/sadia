@@ -78,6 +78,7 @@ function Workers() {
 
   const userRole = useMemo(() => getStoredUser()?.role || "worker", []);
   const currentUserId = useMemo(() => Number(getStoredUser()?.id || 0), []);
+  const isAdmin = userRole === "admin";
 
   const refreshWorkers = async () => {
     try {
@@ -110,6 +111,15 @@ function Workers() {
     let active = true;
 
     const loadWorkers = async () => {
+      if (!isAdmin) {
+        if (active) {
+          setWorkers([]);
+          setError("Admin access required to manage workers.");
+          setLoading(false);
+        }
+        return;
+      }
+
       try {
         setLoading(true);
         await refreshWorkers();
@@ -132,11 +142,18 @@ function Workers() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
+    if (!isAdmin) {
+      setMonthlySummaryRows([]);
+      setYearlySummaryRows([]);
+      setSummaryError("");
+      return;
+    }
+
     refreshAttendanceSummaries();
-  }, [refreshAttendanceSummaries]);
+  }, [isAdmin, refreshAttendanceSummaries]);
 
   const stats = useMemo(() => {
     const presentToday = workers.reduce((sum, worker) => sum + Number(worker.present_day_count || 0), 0);
@@ -200,6 +217,11 @@ function Workers() {
     event.preventDefault();
     setSubmitError("");
 
+    if (!isAdmin) {
+      setSubmitError("Admin access required to add workers.");
+      return;
+    }
+
     if (!form.username.trim() || !form.password.trim() || !form.name.trim()) {
       setSubmitError("Name, username and password are required.");
       return;
@@ -234,6 +256,11 @@ function Workers() {
   };
 
   const handleEditWorker = (worker) => {
+    if (!isAdmin) {
+      setError("Admin access required to edit workers.");
+      return;
+    }
+
     setActiveWorker(worker);
     setEditForm({
       name: worker.name || "",
@@ -247,6 +274,11 @@ function Workers() {
   const handleUpdateWorker = async (event) => {
     event.preventDefault();
     if (!activeWorker) {
+      return;
+    }
+
+    if (!isAdmin) {
+      setEditError("Admin access required to update workers.");
       return;
     }
 
@@ -278,6 +310,11 @@ function Workers() {
   };
 
   const handleDeleteWorker = (worker) => {
+    if (!isAdmin) {
+      setError("Admin access required to delete workers.");
+      return;
+    }
+
     setActiveWorker(worker);
     setDeleteOpen(true);
   };
@@ -303,6 +340,13 @@ function Workers() {
 
   const confirmDeleteWorker = async () => {
     if (!activeWorker) {
+      return;
+    }
+
+    if (!isAdmin) {
+      setError("Admin access required to delete workers.");
+      setDeleteOpen(false);
+      setActiveWorker(null);
       return;
     }
 
@@ -394,104 +438,114 @@ function Workers() {
               <FileSpreadsheet className="h-4 w-4" />
               Excel History
             </button>
-            <Dialog open={open} onOpenChange={setOpen}>
-              <DialogTrigger asChild>
-                <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-                  Add Worker
-                </button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-115">
-                <DialogHeader>
-                  <DialogTitle>Add Worker</DialogTitle>
-                  <DialogDescription>Create worker account with role and monthly salary only.</DialogDescription>
-                </DialogHeader>
+            {isAdmin ? (
+              <Dialog open={open} onOpenChange={setOpen}>
+                <DialogTrigger asChild>
+                  <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                    Add Worker
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-115">
+                  <DialogHeader>
+                    <DialogTitle>Add Worker</DialogTitle>
+                    <DialogDescription>Create worker account with role and monthly salary only.</DialogDescription>
+                  </DialogHeader>
 
-                <form onSubmit={handleSubmit} className="space-y-3">
-                  <label className="block text-xs text-muted-foreground">
-                    Worker Name
-                    <input
-                      name="name"
-                      value={form.name}
-                      onChange={handleChange}
-                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
-                      placeholder="Worker name"
-                      required
-                    />
-                  </label>
+                  <form onSubmit={handleSubmit} className="space-y-3">
+                    <label className="block text-xs text-muted-foreground">
+                      Worker Name
+                      <input
+                        name="name"
+                        value={form.name}
+                        onChange={handleChange}
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                        placeholder="Worker name"
+                        required
+                      />
+                    </label>
 
-                  <label className="block text-xs text-muted-foreground">
-                    Role
-                    <select
-                      name="role"
-                      value={form.role}
-                      onChange={handleChange}
-                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
-                    >
-                      <option value="worker">Worker</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </label>
+                    <label className="block text-xs text-muted-foreground">
+                      Role
+                      <select
+                        name="role"
+                        value={form.role}
+                        onChange={handleChange}
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                      >
+                        <option value="worker">Worker</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </label>
 
-                  <label className="block text-xs text-muted-foreground">
-                    Username
-                    <input
-                      name="username"
-                      value={form.username}
-                      onChange={handleChange}
-                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
-                      placeholder="worker_username"
-                      required
-                    />
-                  </label>
+                    <label className="block text-xs text-muted-foreground">
+                      Username
+                      <input
+                        name="username"
+                        value={form.username}
+                        onChange={handleChange}
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                        placeholder="worker_username"
+                        required
+                      />
+                    </label>
 
-                  <label className="block text-xs text-muted-foreground">
-                    Password
-                    <input
-                      name="password"
-                      type="password"
-                      value={form.password}
-                      onChange={handleChange}
-                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
-                      placeholder="Password"
-                      required
-                    />
-                  </label>
+                    <label className="block text-xs text-muted-foreground">
+                      Password
+                      <input
+                        name="password"
+                        type="password"
+                        value={form.password}
+                        onChange={handleChange}
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                        placeholder="Password"
+                        required
+                      />
+                    </label>
 
-                  <label className="block text-xs text-muted-foreground">
-                    Monthly Salary
-                    <input
-                      name="monthly_salary"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={form.monthly_salary}
-                      onChange={handleChange}
-                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
-                      placeholder="0.00"
-                    />
-                  </label>
+                    <label className="block text-xs text-muted-foreground">
+                      Monthly Salary
+                      <input
+                        name="monthly_salary"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.monthly_salary}
+                        onChange={handleChange}
+                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                        placeholder="0.00"
+                      />
+                    </label>
 
-                  {submitError ? <p className="text-sm text-destructive">{submitError}</p> : null}
+                    {submitError ? <p className="text-sm text-destructive">{submitError}</p> : null}
 
-                  <DialogFooter>
-                    <button
-                      type="button"
-                      onClick={() => setOpen(false)}
-                      className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
-                    >
-                      {submitting ? "Adding..." : "Add Worker"}
-                    </button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
+                    <DialogFooter>
+                      <button
+                        type="button"
+                        onClick={() => setOpen(false)}
+                        className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={submitting}
+                        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+                      >
+                        {submitting ? "Adding..." : "Add Worker"}
+                      </button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="cursor-not-allowed rounded-md bg-primary/60 px-4 py-2 text-sm font-medium text-primary-foreground opacity-70"
+              >
+                Add Worker
+              </button>
+            )}
           </div>
         </div>
 
@@ -592,8 +646,13 @@ function Workers() {
 
         {attendanceError ? <p className="text-sm text-destructive">{attendanceError}</p> : null}
         {summaryError ? <p className="text-sm text-destructive">{summaryError}</p> : null}
+        {!isAdmin ? (
+          <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+            Only admins can open this page and manage worker accounts.
+          </p>
+        ) : null}
 
-        {userRole === "admin" ? (
+        {isAdmin ? (
           <div className="rounded-md border border-border/60 bg-muted/20 p-3">
             <label className="block text-xs text-muted-foreground">
               Weekend Day (Admin Only)
@@ -721,27 +780,31 @@ function Workers() {
                                   </button>
                                 </>
                               ) : null}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleEditWorker(worker);
-                                  setMenuOpenId(null);
-                                }}
-                                className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium hover:bg-muted"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                disabled={Number(worker.id) === Number(currentUserId)}
-                                onClick={() => {
-                                  handleDeleteWorker(worker);
-                                  setMenuOpenId(null);
-                                }}
-                                className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                Delete
-                              </button>
+                              {isAdmin ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleEditWorker(worker);
+                                      setMenuOpenId(null);
+                                    }}
+                                    className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium hover:bg-muted"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={Number(worker.id) === Number(currentUserId)}
+                                    onClick={() => {
+                                      handleDeleteWorker(worker);
+                                      setMenuOpenId(null);
+                                    }}
+                                    className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    Delete
+                                  </button>
+                                </>
+                              ) : null}
                             </div>
                           ) : null}
                         </div>
@@ -830,17 +893,19 @@ function Workers() {
                   </div>
                 ) : null}
 
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => handleEditWorker(worker)} className="rounded-md border border-input px-3 py-2 text-xs font-medium hover:bg-muted">Edit</button>
-                  <button
-                    type="button"
-                    disabled={Number(worker.id) === Number(currentUserId)}
-                    onClick={() => handleDeleteWorker(worker)}
-                    className="rounded-md border border-destructive/50 px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Delete
-                  </button>
-                </div>
+                {isAdmin ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => handleEditWorker(worker)} className="rounded-md border border-input px-3 py-2 text-xs font-medium hover:bg-muted">Edit</button>
+                    <button
+                      type="button"
+                      disabled={Number(worker.id) === Number(currentUserId)}
+                      onClick={() => handleDeleteWorker(worker)}
+                      className="rounded-md border border-destructive/50 px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ))}
             {!loading && filteredWorkers.length === 0 ? (

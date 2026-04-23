@@ -3,6 +3,7 @@ import { Eye, MoreVertical, PlusCircle, Printer, Trash2 } from "lucide-react";
 import SectionPage from "../Shared/SectionPage";
 import { apiDelete, apiGet, apiPost, formatCurrency, getStoredUser } from "../../lib/api";
 import { buildDateRangeQuery, getDateRangePreset } from "../../lib/dateRange";
+import { formatUnitLabel } from "../../lib/units";
 import {
   createSaleMemoItems,
   formatMemoAmount,
@@ -17,13 +18,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../components/ui/dialog";
-
-const formatUnitLabel = (unitType) => {
-  const normalized = String(unitType || "piece").toLowerCase();
-  if (normalized === "dozen") return "Dozen";
-  if (normalized === "set") return "Set";
-  return "Piece";
-};
 
 function Sales() {
   const [sales, setSales] = useState([]);

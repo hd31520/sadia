@@ -77,7 +77,11 @@ const router = createHashRouter([
             },
             {
                 path: "salary",
-                element: withSuspense(<Salary />),
+                element: (
+                    <RequireAuth allowedRoles={["admin"]}>
+                        {withSuspense(<Salary />)}
+                    </RequireAuth>
+                ),
             },
             {
                 path: "supplier",
@@ -85,11 +89,19 @@ const router = createHashRouter([
             },
             {
                 path: "worker",
-                element: withSuspense(<Workers />),
+                element: (
+                    <RequireAuth allowedRoles={["admin"]}>
+                        {withSuspense(<Workers />)}
+                    </RequireAuth>
+                ),
             },
             {
                 path: "worker/:workerId/history",
-                element: withSuspense(<WorkerAttendanceHistory />),
+                element: (
+                    <RequireAuth allowedRoles={["admin"]}>
+                        {withSuspense(<WorkerAttendanceHistory />)}
+                    </RequireAuth>
+                ),
             },
             {
                 path: "report",

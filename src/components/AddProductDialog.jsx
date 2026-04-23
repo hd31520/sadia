@@ -11,6 +11,7 @@ import {
 } from "./ui/dialog";
 import { uploadImageToImgbb } from "../lib/imgbb";
 import { apiGet, apiPost } from "../lib/api";
+import { UNIT_TYPE_OPTIONS } from "../lib/units";
 
 export function AddProductDialog({ onProductAdded }) {
   const [open, setOpen] = useState(false);
@@ -331,9 +332,11 @@ export function AddProductDialog({ onProductAdded }) {
                 onChange={handleChange}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
               >
-                <option value="piece">Piece</option>
-                <option value="dozen">Dozen</option>
-                <option value="set">Set</option>
+                {UNIT_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="space-y-1">

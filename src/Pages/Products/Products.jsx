@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import SectionPage from "../Shared/SectionPage";
-import { apiDelete, apiGet, apiPut, formatCurrency } from "../../lib/api";
+import { apiDelete, apiGet, apiPut, formatCurrency, getStoredUser } from "../../lib/api";
 import { AddProductDialog } from "../../components/AddProductDialog";
 import { MoreVertical, Upload, X } from "lucide-react";
 import { uploadImageToImgbb } from "../../lib/imgbb";
+import { formatUnitLabel, UNIT_TYPE_OPTIONS } from "../../lib/units";
 import {
   Dialog,
   DialogContent,
@@ -13,14 +14,9 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 
-const formatUnitLabel = (unitType) => {
-  const normalized = String(unitType || "piece").toLowerCase();
-  if (normalized === "dozen") return "Dozen";
-  if (normalized === "set") return "Set";
-  return "Piece";
-};
-
 function Products() {
+  const currentUser = useMemo(() => getStoredUser(), []);
+  const isAdmin = currentUser?.role === "admin";
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [stockFilter, setStockFilter] = useState("all");
@@ -128,6 +124,11 @@ function Products() {
   };
 
   const handleEditProduct = async (product) => {
+    if (!isAdmin) {
+      setError("Admin access required to edit products.");
+      return;
+    }
+
     await loadSuppliers();
     setActiveProduct(product);
     setEditForm({
@@ -179,6 +180,11 @@ function Products() {
     event.preventDefault();
     if (!activeProduct) return;
 
+    if (!isAdmin) {
+      setEditError("Admin access required to update products.");
+      return;
+    }
+
     const payload = {
       name: editForm.name.trim() || activeProduct.name,
       description: editForm.description.trim() || null,
@@ -216,12 +222,25 @@ function Products() {
   };
 
   const handleDeleteProduct = async (product) => {
+    if (!isAdmin) {
+      setError("Admin access required to delete products.");
+      return;
+    }
+
     setActiveProduct(product);
     setDeleteOpen(true);
   };
 
   const confirmDeleteProduct = async () => {
     if (!activeProduct) return;
+
+    if (!isAdmin) {
+      setError("Admin access required to delete products.");
+      setDeleteOpen(false);
+      setActiveProduct(null);
+      return;
+    }
+
     try {
       setDeleting(true);
       await apiDelete(`/api/products/${activeProduct.id}`);
@@ -423,6 +442,12 @@ function Products() {
         </div>
       )}
       <div className="space-y-4">
+        {!isAdmin ? (
+          <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700">
+            You can browse products and print barcodes, but only admins can add, edit, or delete products.
+          </p>
+        ) : null}
+
         <div className="rounded-2xl border border-border/60 bg-card/90 p-4 shadow-[0_10px_32px_rgba(15,23,42,0.06)]">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="grid gap-3 sm:grid-cols-2 lg:w-full lg:max-w-3xl lg:grid-cols-[minmax(0,1.5fr)_minmax(0,0.7fr)]">
@@ -455,7 +480,17 @@ function Products() {
               >
                 Reset
               </button>
-              <AddProductDialog onProductAdded={handleProductAdded} />
+              {isAdmin ? (
+                <AddProductDialog onProductAdded={handleProductAdded} />
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="cursor-not-allowed rounded-md bg-primary/60 px-4 py-2 text-sm font-medium text-primary-foreground opacity-70"
+                >
+                  Add Product
+                </button>
+              )}
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -584,9 +619,11 @@ function Products() {
                     onChange={handleEditChange}
                     className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
                   >
-                    <option value="piece">Piece</option>
-                    <option value="dozen">Dozen</option>
-                    <option value="set">Set</option>
+                    {UNIT_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
               </div>
@@ -790,8 +827,12 @@ function Products() {
                             className={`absolute right-0 top-0 z-50 w-44 rounded-lg border border-border bg-background p-1 shadow-xl ${getMenuPlacementClass(index, filteredProducts.length)}`}
                           >
                             <button type="button" onClick={() => { openBarcodePrintDialog(product); setMenuOpenId(null); }} className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium hover:bg-muted">Print Barcode</button>
-                            <button type="button" onClick={() => { handleEditProduct(product); setMenuOpenId(null); }} className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium hover:bg-muted">Edit</button>
-                            <button type="button" onClick={() => { handleDeleteProduct(product); setMenuOpenId(null); }} className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium text-destructive hover:bg-destructive/10">Delete</button>
+                            {isAdmin ? (
+                              <>
+                                <button type="button" onClick={() => { handleEditProduct(product); setMenuOpenId(null); }} className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium hover:bg-muted">Edit</button>
+                                <button type="button" onClick={() => { handleDeleteProduct(product); setMenuOpenId(null); }} className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium text-destructive hover:bg-destructive/10">Delete</button>
+                              </>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -827,8 +868,12 @@ function Products() {
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button type="button" onClick={() => openBarcodePrintDialog(product)} disabled={printingBarcodeId === product.id} className="rounded-md border border-input px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-60">{printingBarcodeId === product.id ? "Printing..." : "Print Barcode"}</button>
-                  <button type="button" onClick={() => handleEditProduct(product)} className="rounded-md border border-input px-3 py-2 text-xs font-medium hover:bg-muted">Edit</button>
-                  <button type="button" onClick={() => handleDeleteProduct(product)} className="rounded-md border border-destructive/50 px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/10">Delete</button>
+                  {isAdmin ? (
+                    <>
+                      <button type="button" onClick={() => handleEditProduct(product)} className="rounded-md border border-input px-3 py-2 text-xs font-medium hover:bg-muted">Edit</button>
+                      <button type="button" onClick={() => handleDeleteProduct(product)} className="rounded-md border border-destructive/50 px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/10">Delete</button>
+                    </>
+                  ) : null}
                 </div>
               </div>
             ))}

@@ -180,9 +180,20 @@ async function authorizedResponse(path, options = {}) {
     );
   }
 
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     clearAuthSession();
     throw new Error("Session expired. Please log in again.");
+  }
+
+  if (response.status === 403) {
+    const errorMessage = await parseError(response, "Forbidden");
+
+    if (/invalid or expired token|access token required|not authenticated/i.test(errorMessage)) {
+      clearAuthSession();
+      throw new Error("Session expired. Please log in again.");
+    }
+
+    throw new Error(errorMessage);
   }
 
   if (!response.ok) {
