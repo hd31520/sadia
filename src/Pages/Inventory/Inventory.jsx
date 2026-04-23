@@ -10,6 +10,30 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 
+const inventoryColumnColorDefaults = {
+  product: "default",
+  stock: "default",
+  status: "default",
+  cost: "default",
+  action: "default",
+};
+
+const columnOptions = [
+  { key: "product", label: "Product" },
+  { key: "stock", label: "Stock" },
+  { key: "status", label: "Status" },
+  { key: "cost", label: "Cost Value" },
+  { key: "action", label: "Action" },
+];
+
+const columnColorPresets = {
+  default: "",
+  green: "bg-emerald-500/10",
+  red: "bg-rose-500/10",
+  amber: "bg-amber-500/10",
+  blue: "bg-sky-500/10",
+};
+
 function Inventory() {
   const currentUser = getStoredUser();
   const isAdmin = currentUser?.role === "admin";
@@ -25,6 +49,9 @@ function Inventory() {
   const [deleteError, setDeleteError] = useState("");
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState(null);
+  const [columnColors, setColumnColors] = useState(inventoryColumnColorDefaults);
+  const [contextMenu, setContextMenu] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -49,6 +76,48 @@ function Inventory() {
     };
 
     loadInventory();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const closeContextMenu = () => setContextMenu(null);
+    window.addEventListener("click", closeContextMenu);
+    return () => window.removeEventListener("click", closeContextMenu);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadColumnColors = async () => {
+      try {
+        const payload = await apiGet("/api/preferences/inventory-column-colors");
+        const nextColors = payload?.value;
+
+        if (
+          active &&
+          nextColors &&
+          typeof nextColors === "object" &&
+          !Array.isArray(nextColors)
+        ) {
+          setColumnColors((prev) => ({
+            ...prev,
+            ...Object.fromEntries(
+              Object.entries(nextColors).filter(
+                ([columnKey, colorKey]) =>
+                  columnKey in inventoryColumnColorDefaults && colorKey in columnColorPresets
+              )
+            ),
+          }));
+        }
+      } catch {
+        // Keep local defaults if preference loading fails.
+      }
+    };
+
+    loadColumnColors();
 
     return () => {
       active = false;
@@ -80,6 +149,18 @@ function Inventory() {
       return searchableValues.some((value) => String(value || "").toLowerCase().includes(query));
     });
   }, [products, searchTerm]);
+
+  useEffect(() => {
+    if (!filteredProducts.length) {
+      setSelectedProductId(null);
+      return;
+    }
+
+    const hasSelection = filteredProducts.some((product) => product.id === selectedProductId);
+    if (!hasSelection) {
+      setSelectedProductId(filteredProducts[0].id);
+    }
+  }, [filteredProducts, selectedProductId]);
 
   const stats = useMemo(() => {
     const totalUnits = products.reduce((acc, product) => acc + Number(product.stock || 0), 0);
@@ -148,6 +229,47 @@ function Inventory() {
       setDeleting(false);
     }
   };
+
+  const handleInventoryWheel = (event) => {
+    if (!filteredProducts.length) {
+      return;
+    }
+
+    const currentIndex = filteredProducts.findIndex((product) => product.id === selectedProductId);
+    const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+    const direction = event.deltaY > 0 ? 1 : -1;
+    const nextIndex = Math.min(Math.max(safeIndex + direction, 0), filteredProducts.length - 1);
+
+    if (nextIndex !== safeIndex) {
+      event.preventDefault();
+      setSelectedProductId(filteredProducts[nextIndex].id);
+    }
+  };
+
+  const openColumnContextMenu = (event, columnKey) => {
+    event.preventDefault();
+    setContextMenu({
+      columnKey,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const setColumnColor = async (columnKey, colorKey) => {
+    const nextColors = { ...columnColors, [columnKey]: colorKey };
+    setColumnColors(nextColors);
+    setContextMenu(null);
+
+    try {
+      await apiPut("/api/preferences/inventory-column-colors", {
+        value: nextColors,
+      });
+    } catch {
+      // Keep the chosen color in UI even if saving fails for now.
+    }
+  };
+
+  const getColumnTone = (columnKey) => columnColorPresets[columnColors[columnKey]] || "";
 
   return (
     <SectionPage
@@ -257,28 +379,44 @@ function Inventory() {
         </DialogContent>
       </Dialog>
 
-      <div className="overflow-x-auto rounded-lg border border-border/60">
+      <div
+        className="relative overflow-x-auto rounded-lg border border-border/60"
+        onWheel={handleInventoryWheel}
+      >
         <table className="w-full min-w-full text-sm">
           <thead className="bg-muted/30 text-left">
             <tr>
-              <th className="px-3 py-2">Product</th>
-              <th className="px-3 py-2">Stock</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Cost Value</th>
-              <th className="px-3 py-2">Action</th>
+              <th onContextMenu={(event) => openColumnContextMenu(event, "product")} className={`px-3 py-2 ${getColumnTone("product")}`}>Product</th>
+              <th onContextMenu={(event) => openColumnContextMenu(event, "stock")} className={`px-3 py-2 ${getColumnTone("stock")}`}>Stock</th>
+              <th onContextMenu={(event) => openColumnContextMenu(event, "status")} className={`px-3 py-2 ${getColumnTone("status")}`}>Status</th>
+              <th onContextMenu={(event) => openColumnContextMenu(event, "cost")} className={`px-3 py-2 ${getColumnTone("cost")}`}>Cost Value</th>
+              <th onContextMenu={(event) => openColumnContextMenu(event, "action")} className={`px-3 py-2 ${getColumnTone("action")}`}>Action</th>
             </tr>
           </thead>
           <tbody>
             {filteredProducts.map((product) => {
               const stock = Number(product.stock || 0);
               const low = stock < 10;
+              const selected = product.id === selectedProductId;
+              const rowTone = low
+                ? "bg-rose-500/8 hover:bg-rose-500/12"
+                : "bg-emerald-500/8 hover:bg-emerald-500/12";
+              const selectedTone = selected ? "outline outline-2 outline-primary/60 outline-offset-[-2px]" : "";
               return (
-                <tr key={product.id} className="border-t border-border/50">
-                  <td className="px-3 py-2">{product.name}</td>
-                  <td className="px-3 py-2">{stock}</td>
-                  <td className="px-3 py-2">{low ? "Low" : "Healthy"}</td>
-                  <td className="px-3 py-2">{formatCurrency(stock * Number(product.cost_price || 0))}</td>
-                  <td className="px-3 py-2">
+                <tr
+                  key={product.id}
+                  onClick={() => setSelectedProductId(product.id)}
+                  className={`border-t border-border/50 transition-colors ${rowTone} ${selectedTone}`}
+                >
+                  <td className={`px-3 py-2 ${getColumnTone("product")}`}>{product.name}</td>
+                  <td className={`px-3 py-2 font-medium ${low ? "text-rose-700" : "text-emerald-700"} ${getColumnTone("stock")}`}>{stock}</td>
+                  <td className={`px-3 py-2 ${getColumnTone("status")}`}>
+                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${low ? "border-rose-500/25 bg-rose-500/10 text-rose-700" : "border-emerald-500/25 bg-emerald-500/10 text-emerald-700"}`}>
+                      {low ? "Low Stock" : "Healthy"}
+                    </span>
+                  </td>
+                  <td className={`px-3 py-2 ${getColumnTone("cost")}`}>{formatCurrency(stock * Number(product.cost_price || 0))}</td>
+                  <td className={`px-3 py-2 ${getColumnTone("action")}`}>
                     {isAdmin ? (
                       <div className="flex items-center gap-2">
                         <button
@@ -312,6 +450,34 @@ function Inventory() {
             ) : null}
           </tbody>
         </table>
+
+        {contextMenu ? (
+          <div
+            className="fixed z-50 min-w-44 rounded-lg border border-border bg-background p-1 shadow-xl"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Colorize {columnOptions.find((option) => option.key === contextMenu.columnKey)?.label || "Column"}
+            </p>
+            {[
+              { key: "default", label: "Default" },
+              { key: "green", label: "Green" },
+              { key: "red", label: "Red" },
+              { key: "amber", label: "Amber" },
+              { key: "blue", label: "Blue" },
+            ].map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setColumnColor(contextMenu.columnKey, option.key)}
+                className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium hover:bg-muted"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
       </>
     </SectionPage>
