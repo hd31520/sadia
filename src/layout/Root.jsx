@@ -164,7 +164,7 @@ function Root() {
               </button>
               <div className="min-w-0 flex-1">
                 <h1 className="truncate text-sm font-semibold text-foreground sm:text-base md:text-lg">{currentLabel}</h1>
-                <p className="hidden text-xs text-muted-foreground sm:block">Live data connected to the POS API</p>
+                <p className="hidden text-xs text-muted-foreground sm:block">Live data connected to local POS API</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <div className="hidden rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-600 lg:block">

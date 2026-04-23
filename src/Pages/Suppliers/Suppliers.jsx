@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import SectionPage from "../Shared/SectionPage";
-import { apiDelete, apiGet, apiPost, apiPut, formatCurrency } from "../../lib/api";
+import { apiDelete, apiGet, apiPost, apiPut, formatCurrency, getStoredUser } from "../../lib/api";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +35,7 @@ function Suppliers() {
     company_name: "",
     phone: "",
   });
+  const canManageSuppliers = getStoredUser()?.role === "admin";
 
   useEffect(() => {
     let active = true;
@@ -388,7 +389,7 @@ function Suppliers() {
                 <th className="px-3 py-2">Supplier Number</th>
                 <th className="px-3 py-2">Products</th>
                 <th className="px-3 py-2">Calculative Amount</th>
-                <th className="px-3 py-2">Action</th>
+                {canManageSuppliers ? <th className="px-3 py-2">Action</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -399,29 +400,34 @@ function Suppliers() {
                   <td className="px-3 py-2">{supplier.phone || "-"}</td>
                   <td className="px-3 py-2">{supplier.product_count}</td>
                   <td className="px-3 py-2 font-medium">{formatCurrency(supplier.total_amount)}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleEditSupplier(supplier)}
-                        className="rounded-md border border-input px-2.5 py-1 text-xs font-medium hover:bg-muted"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteSupplier(supplier)}
-                        className="rounded-md border border-destructive/50 px-2.5 py-1 text-xs font-medium text-destructive hover:bg-destructive/10"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
+                  {canManageSuppliers ? (
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditSupplier(supplier)}
+                          className="rounded-md border border-input px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSupplier(supplier)}
+                          className="rounded-md border border-destructive/50 px-2.5 py-1 text-xs font-medium text-destructive hover:bg-destructive/10"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
               {!loading && filteredSuppliers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  <td
+                    colSpan={canManageSuppliers ? 6 : 5}
+                    className="px-3 py-6 text-center text-sm text-muted-foreground"
+                  >
                     No suppliers found.
                   </td>
                 </tr>

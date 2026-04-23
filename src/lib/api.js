@@ -1,29 +1,28 @@
 const configuredApiBase = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const apiPortStart = Number(import.meta.env.VITE_API_PORT_START || 5050);
 const apiPortEnd = Number(import.meta.env.VITE_API_PORT_END || 5059);
-const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
-const browserHostname = typeof window !== "undefined" ? window.location.hostname : "";
-const browserPort = typeof window !== "undefined" ? Number(window.location.port || 0) : 0;
-const isLocalBrowser =
-  browserHostname === "localhost" ||
-  browserHostname === "127.0.0.1" ||
-  browserHostname === "https://sadia-server.vercel.app";
+
+function getBrowserOriginBase() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  const origin = String(window.location?.origin || "").trim();
+  return /^https?:\/\//i.test(origin) ? origin : "";
+}
 
 function createDefaultApiBases() {
   const bases = [];
+  const browserOriginBase = getBrowserOriginBase();
   const startPort = Math.min(apiPortStart, apiPortEnd);
   const endPort = Math.max(apiPortStart, apiPortEnd);
-  const browserRunsOnApiPort =
-    Number.isFinite(browserPort) && browserPort >= startPort && browserPort <= endPort;
 
-  if (!configuredApiBase && browserOrigin && (!isLocalBrowser || browserRunsOnApiPort)) {
-    bases.push(browserOrigin);
+  if (browserOriginBase) {
+    bases.push(browserOriginBase);
   }
 
-  if (isLocalBrowser) {
-    for (let port = startPort; port <= endPort; port += 1) {
-      bases.push(`http://127.0.0.1:${port}`, `http://localhost:${port}`);
-    }
+  for (let port = startPort; port <= endPort; port += 1) {
+    bases.push(`http://127.0.0.1:${port}`, `http://localhost:${port}`);
   }
 
   return bases;
@@ -37,7 +36,7 @@ const API_BASES = Array.from(
   )
 );
 
-let activeApiBase = (API_BASES[0] || browserOrigin || "http://127.0.0.1:5050").replace(/\/$/, "");
+let activeApiBase = API_BASES[0] || "";
 
 const TOKEN_KEY = "pos_auth_token";
 const USER_KEY = "pos_auth_user";
@@ -91,23 +90,8 @@ function isHtmlResponse(response) {
   return contentType.includes("text/html");
 }
 
-async function parseJsonBody(response, fallbackMessage) {
-  if (response.status === 204) {
-    return null;
-  }
-
-  if (isHtmlResponse(response)) {
-    throw new Error(
-      `${fallbackMessage} The request reached an HTML page instead of the API. Check that the backend is running and that Vite points to the server, not the frontend.`
-    );
-  }
-
-  return response.json();
-}
-
 async function requestWithBaseFallback(path, options, onNetworkErrorMessage) {
   let lastNetworkError = null;
-  let sawHtmlResponse = false;
 
   for (const base of getCandidateBases()) {
     try {
@@ -115,8 +99,10 @@ async function requestWithBaseFallback(path, options, onNetworkErrorMessage) {
       if (response.status === 404) {
         continue;
       }
+
+      // In dev, hitting the frontend origin can return index.html for unknown /api routes.
+      // Treat HTML as a wrong target so we can continue trying actual backend bases.
       if (path.startsWith("/api/") && isHtmlResponse(response)) {
-        sawHtmlResponse = true;
         continue;
       }
 
@@ -129,12 +115,6 @@ async function requestWithBaseFallback(path, options, onNetworkErrorMessage) {
 
   if (lastNetworkError) {
     throw new Error(onNetworkErrorMessage(getCandidateBases(), lastNetworkError));
-  }
-
-  if (sawHtmlResponse) {
-    throw new Error(
-      `Unable to reach the API at ${getCandidateBases().join(" or ")}. A frontend HTML page responded instead of JSON.`
-    );
   }
 
   return new Response(null, { status: 404, statusText: "Not Found" });
@@ -203,7 +183,17 @@ export async function publicRequest(path, options = {}) {
     throw new Error(await parseError(response, `Request failed: ${response.status}`));
   }
 
-  return parseJsonBody(response, "Failed to read API response.");
+  if (response.status === 204) {
+    return null;
+  }
+
+  if (isHtmlResponse(response)) {
+    throw new Error(
+      `Received HTML instead of JSON from ${response.url || "the server"}. Please ensure the backend is running and API base URL is correct.`
+    );
+  }
+
+  return response.json();
 }
 
 export const publicPost = (path, body) =>
@@ -222,7 +212,17 @@ export async function apiRequest(path, options = {}) {
     throw new Error(await parseError(response, `Request failed: ${response.status}`));
   }
 
-  return parseJsonBody(response, "Failed to read API response.");
+  if (response.status === 204) {
+    return null;
+  }
+
+  if (isHtmlResponse(response)) {
+    throw new Error(
+      `Received HTML instead of JSON from ${response.url || "the server"}. Please ensure the backend is running and API base URL is correct.`
+    );
+  }
+
+  return response.json();
 }
 
 export const apiGet = (path) => apiRequest(path);

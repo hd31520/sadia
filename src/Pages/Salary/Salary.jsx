@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 import SectionPage from "../Shared/SectionPage";
 import { apiGet, apiPost, formatCurrency } from "../../lib/api";
 import {
@@ -11,20 +12,48 @@ import {
 } from "../../components/ui/dialog";
 
 function Salary() {
+  const navigate = useNavigate();
   const [workers, setWorkers] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [payOpen, setPayOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [selectedWorker, setSelectedWorker] = useState(null);
   const [payForm, setPayForm] = useState({ amount: "", note: "" });
   const [payError, setPayError] = useState("");
   const [paySubmitting, setPaySubmitting] = useState(false);
+  const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [historyYear, setHistoryYear] = useState(() => String(new Date().getFullYear()));
+  const [monthlyAttendanceRows, setMonthlyAttendanceRows] = useState([]);
+  const [yearlyAttendanceRows, setYearlyAttendanceRows] = useState([]);
+  const [salaryPayments, setSalaryPayments] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
 
   const refreshWorkers = async () => {
     const workerPayload = await apiGet("/api/users/workers");
     setWorkers(workerPayload || []);
   };
+
+  const refreshSalaryHistory = useCallback(async () => {
+    try {
+      setHistoryLoading(true);
+      const [monthlyPayload, yearlyPayload, paymentsPayload] = await Promise.all([
+        apiGet(`/api/attendance/monthly-summary?month=${historyMonth}`),
+        apiGet(`/api/attendance/yearly-summary?year=${historyYear}`),
+        apiGet("/api/salary-payments"),
+      ]);
+      setMonthlyAttendanceRows(monthlyPayload?.rows || []);
+      setYearlyAttendanceRows(yearlyPayload?.rows || []);
+      setSalaryPayments(paymentsPayload || []);
+      setHistoryError("");
+    } catch (err) {
+      setHistoryError(err.message || "Failed to load salary history");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [historyMonth, historyYear]);
 
   useEffect(() => {
     let active = true;
@@ -55,6 +84,10 @@ function Salary() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    refreshSalaryHistory();
+  }, [refreshSalaryHistory]);
 
   const payrollRows = useMemo(
     () =>
@@ -165,6 +198,11 @@ function Salary() {
     setPayOpen(true);
   };
 
+  const openHistoryDialog = (worker) => {
+    setSelectedWorker(worker);
+    setHistoryOpen(true);
+  };
+
   const handlePaySalary = async (event) => {
     event.preventDefault();
 
@@ -194,6 +232,7 @@ function Salary() {
 
       await printSalaryReceipt(payload.payment);
       await refreshWorkers();
+      await refreshSalaryHistory();
       setPayOpen(false);
       setSelectedWorker(null);
     } catch (err) {
@@ -203,23 +242,54 @@ function Salary() {
     }
   };
 
+  const selectedMonthlyAttendance = useMemo(
+    () => monthlyAttendanceRows.find((row) => Number(row.id) === Number(selectedWorker?.id || 0)) || null,
+    [monthlyAttendanceRows, selectedWorker?.id]
+  );
+
+  const selectedYearlyAttendance = useMemo(
+    () => yearlyAttendanceRows.find((row) => Number(row.id) === Number(selectedWorker?.id || 0)) || null,
+    [yearlyAttendanceRows, selectedWorker?.id]
+  );
+
+  const selectedSalaryPayments = useMemo(
+    () => salaryPayments.filter((payment) => Number(payment.worker_id) === Number(selectedWorker?.id || 0)),
+    [salaryPayments, selectedWorker?.id]
+  );
+
   return (
     <SectionPage
       title="Salary"
-      description="Review each worker daily and monthly salary, due amount, and pay with receipt."
+      description="Review payroll, salary payment history, and attendance history from one page."
       stats={stats}
       loading={loading}
       error={error}
     >
       <div className="space-y-4">
-        <div>
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <input
             type="search"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
             placeholder="Search worker, username, paid, due..."
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:max-w-sm"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground xl:max-w-sm"
           />
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <input
+              type="month"
+              value={historyMonth}
+              onChange={(event) => setHistoryMonth(event.target.value)}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+            />
+            <input
+              type="number"
+              min="2000"
+              max="3000"
+              value={historyYear}
+              onChange={(event) => setHistoryYear(event.target.value)}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:w-32"
+            />
+          </div>
         </div>
 
         <Dialog open={payOpen} onOpenChange={setPayOpen}>
@@ -281,6 +351,105 @@ function Salary() {
           </DialogContent>
         </Dialog>
 
+        <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+          <DialogContent className="sm:max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>Worker Salary History</DialogTitle>
+              <DialogDescription>
+                {selectedWorker ? `Attendance and salary history for ${selectedWorker.name}.` : "Select a worker."}
+              </DialogDescription>
+            </DialogHeader>
+
+            {historyError ? <p className="text-sm text-destructive">{historyError}</p> : null}
+
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Attendance Days</p>
+                  <p className="mt-2 text-lg font-semibold text-foreground">
+                    {Number(selectedMonthlyAttendance?.attendance_days || 0).toFixed(1)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Month Salary</p>
+                  <p className="mt-2 text-lg font-semibold text-foreground">
+                    {formatCurrency(selectedMonthlyAttendance?.month_salary || 0)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Salary Paid</p>
+                  <p className="mt-2 text-lg font-semibold text-foreground">
+                    {formatCurrency(selectedMonthlyAttendance?.salary_paid || 0)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/worker/${selectedWorker?.id}/history`)}
+                  className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+                >
+                  Open Calendar Page
+                </button>
+              </div>
+
+              <div className="rounded-lg border border-border/60">
+                <div className="border-b border-border/60 px-4 py-3">
+                  <h3 className="text-sm font-semibold text-foreground">Yearly Attendance Days</h3>
+                </div>
+                <div className="grid gap-2 p-4 sm:grid-cols-3 lg:grid-cols-4">
+                  {(selectedYearlyAttendance?.months || []).map((monthRow) => (
+                    <div key={monthRow.month} className="rounded-md border border-border/60 bg-card p-3">
+                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{monthRow.month}</p>
+                      <p className="mt-2 text-base font-semibold text-foreground">
+                        {Number(monthRow.attendance_days || 0).toFixed(1)} days
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border/60">
+                <div className="border-b border-border/60 px-4 py-3">
+                  <h3 className="text-sm font-semibold text-foreground">Salary Payment History</h3>
+                </div>
+                <div className="max-h-72 overflow-auto">
+                  <table className="w-full table-fixed text-sm">
+                    <thead className="bg-muted/30 text-left">
+                      <tr>
+                        <th className="w-[18%] px-3 py-2">Month</th>
+                        <th className="w-[16%] px-3 py-2">Amount</th>
+                        <th className="w-[26%] px-3 py-2">Payment Date</th>
+                        <th className="w-[18%] px-3 py-2">Created By</th>
+                        <th className="w-[22%] px-3 py-2">Note</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedSalaryPayments.map((payment) => (
+                        <tr key={payment.id} className="border-t border-border/50">
+                          <td className="px-3 py-2">{payment.salary_month}</td>
+                          <td className="px-3 py-2">{formatCurrency(payment.amount)}</td>
+                          <td className="px-3 py-2">{new Date(payment.payment_date).toLocaleString()}</td>
+                          <td className="px-3 py-2">{payment.created_by_name || "-"}</td>
+                          <td className="px-3 py-2">{payment.note || "-"}</td>
+                        </tr>
+                      ))}
+                      {!selectedSalaryPayments.length ? (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                            No salary payment history found.
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <div className="rounded-lg border border-border/60">
           <div className="hidden md:block">
             <table className="w-full table-fixed text-sm">
@@ -316,14 +485,23 @@ function Salary() {
                     <td className="px-3 py-2 whitespace-nowrap">{formatCurrency(worker.salaryPaid)}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{formatCurrency(worker.salaryDue)}</td>
                     <td className="px-3 py-2">
-                      <button
-                        type="button"
-                        onClick={() => openPayDialog(worker)}
-                        disabled={worker.salaryDue <= 0}
-                        className="rounded-md border border-input px-3 py-2 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {worker.salaryDue > 0 ? "Pay Salary" : "Paid"}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openHistoryDialog(worker)}
+                          className="rounded-md border border-input px-3 py-2 text-xs font-medium hover:bg-muted"
+                        >
+                          History
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openPayDialog(worker)}
+                          disabled={worker.salaryDue <= 0}
+                          className="rounded-md border border-input px-3 py-2 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {worker.salaryDue > 0 ? "Pay Salary" : "Paid"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -374,6 +552,16 @@ function Salary() {
                     <span className="text-sm text-foreground">{formatCurrency(worker.salaryPaid)} / {formatCurrency(worker.salaryDue)}</span>
                   </div>
                 </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openHistoryDialog(worker)}
+                    className="rounded-md border border-input px-3 py-2 text-xs font-medium hover:bg-muted"
+                  >
+                    History
+                  </button>
+                </div>
               </div>
             ))}
 
@@ -382,10 +570,54 @@ function Salary() {
             ) : null}
           </div>
         </div>
+
+        <div className="rounded-lg border border-border/60">
+          <div className="border-b border-border/60 px-4 py-3">
+            <h2 className="text-sm font-semibold text-foreground">Monthly Attendance History</h2>
+            <p className="text-xs text-muted-foreground">Attendance history used for salary context in {historyMonth}</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full table-fixed text-sm">
+              <thead className="bg-muted/30 text-left">
+                <tr>
+                  <th className="w-[20%] px-3 py-2">Worker</th>
+                  <th className="w-[12%] px-3 py-2">Present</th>
+                  <th className="w-[12%] px-3 py-2">Half Day</th>
+                  <th className="w-[12%] px-3 py-2">Weekend</th>
+                  <th className="w-[12%] px-3 py-2">Absent</th>
+                  <th className="w-[12%] px-3 py-2">Days</th>
+                  <th className="w-[20%] px-3 py-2">Salary Paid</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyAttendanceRows.map((worker) => (
+                  <tr key={worker.id} className="border-t border-border/50">
+                    <td className="px-3 py-2">
+                      <span className="block truncate font-medium text-foreground">{worker.name}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{worker.username}</span>
+                    </td>
+                    <td className="px-3 py-2">{worker.present_count}</td>
+                    <td className="px-3 py-2">{worker.half_day_count}</td>
+                    <td className="px-3 py-2">{worker.weekend_count}</td>
+                    <td className="px-3 py-2">{worker.absent_count}</td>
+                    <td className="px-3 py-2">{Number(worker.attendance_days || 0).toFixed(1)}</td>
+                    <td className="px-3 py-2">{formatCurrency(worker.salary_paid || 0)}</td>
+                  </tr>
+                ))}
+                {!historyLoading && !monthlyAttendanceRows.length ? (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                      No monthly attendance history found.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </SectionPage>
   );
 }
 
 export default Salary;
-

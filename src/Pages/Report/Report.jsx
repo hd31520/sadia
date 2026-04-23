@@ -1,7 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import * as XLSX from "xlsx";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
 import SectionPage from "../Shared/SectionPage";
 import { apiDownload, apiGet } from "../../lib/api";
 import { buildDateRangeQuery, getDateRangePreset } from "../../lib/dateRange";
@@ -150,7 +147,8 @@ const downloadBlob = (content, filename, mimeType) => {
   URL.revokeObjectURL(url);
 };
 
-const downloadExcel = (report, filename) => {
+const downloadExcel = async (report, filename) => {
+  const XLSX = await import("xlsx");
   const { summary, trend, recent } = buildExcelData(report);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(summary), "Summary");
@@ -159,7 +157,11 @@ const downloadExcel = (report, filename) => {
   XLSX.writeFile(workbook, filename);
 };
 
-const downloadPdf = (report, filename) => {
+const downloadPdf = async (report, filename) => {
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const rangeLabel = `${report.range.start_date || "-"} to ${report.range.end_date || "-"}`;
@@ -427,12 +429,12 @@ function Report() {
       }
 
       if (format === "excel") {
-        downloadExcel(reportData, `sales-report-${filenameSuffix}.xlsx`);
+        await downloadExcel(reportData, `sales-report-${filenameSuffix}.xlsx`);
         return;
       }
 
       if (format === "pdf") {
-        downloadPdf(reportData, `sales-report-${filenameSuffix}.pdf`);
+        await downloadPdf(reportData, `sales-report-${filenameSuffix}.pdf`);
         return;
       }
 

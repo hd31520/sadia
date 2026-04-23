@@ -1,12 +1,8 @@
 // imgbb API integration
-const IMGBB_API_KEY = (import.meta.env.VITE_IMGBB_API_KEY || "").trim();
+const IMGBB_API_KEY = import.meta.env.VITE_IMGBB_API_KEY || "055cd9c4de924aa8352f4d26a33e1719";
 const IMGBB_API_URL = "https://api.imgbb.com/1/upload";
 
 export async function uploadImageToImgbb(file) {
-  if (!IMGBB_API_KEY) {
-    throw new Error("Image upload is not configured. Add VITE_IMGBB_API_KEY to the client env.");
-  }
-
   if (!file) {
     throw new Error("No file provided");
   }
@@ -38,7 +34,7 @@ export async function uploadImageToImgbb(file) {
     }
 
     const data = await response.json();
-
+    
     if (data.success) {
       return {
         url: data.data.url,

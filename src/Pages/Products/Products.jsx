@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import bwipjs from "bwip-js";
 import SectionPage from "../Shared/SectionPage";
 import { apiDelete, apiGet, apiPut, formatCurrency } from "../../lib/api";
 import { AddProductDialog } from "../../components/AddProductDialog";
@@ -236,7 +235,8 @@ function Products() {
     }
   };
 
-  const generateBarcodeDataUrl = (barcodeText) => {
+  const generateBarcodeDataUrl = async (barcodeText) => {
+    const { default: bwipjs } = await import("bwip-js");
     const canvas = document.createElement("canvas");
     bwipjs.toCanvas(canvas, {
       bcid: "code128",
@@ -258,7 +258,7 @@ function Products() {
 
     try {
       setPrintingBarcodeId(product.id);
-      const barcodeDataUrl = generateBarcodeDataUrl(product.barcode);
+      const barcodeDataUrl = await generateBarcodeDataUrl(product.barcode);
       const safeQty = Math.min(Math.max(Number(quantity) || 1, 1), 200);
 
       const labelsHtml = Array.from({ length: safeQty }, (_, index) => `
@@ -396,6 +396,18 @@ function Products() {
       return matchesQuery && matchesStock;
     });
   }, [products, searchTerm, stockFilter]);
+
+  const getMenuPlacementClass = (index, total) => {
+    if (index < 2) {
+      return "top-full mt-2";
+    }
+
+    if (index >= total - 2) {
+      return "bottom-full mb-2";
+    }
+
+    return "top-full mt-2";
+  };
 
   return (
     <SectionPage
@@ -742,7 +754,7 @@ function Products() {
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.map((product) => (
+                {filteredProducts.map((product, index) => (
                   <tr key={product.id} className="border-t border-border/50 align-top">
                     <td className="px-3 py-2">
                       {product.image_url ? (
@@ -774,7 +786,9 @@ function Products() {
                           <MoreVertical className="h-4 w-4" />
                         </button>
                         {menuOpenId === product.id ? (
-                          <div className="absolute bottom-full right-0 z-50 mb-2 w-44 rounded-lg border border-border bg-background p-1 shadow-xl">
+                          <div
+                            className={`absolute right-0 top-0 z-50 w-44 rounded-lg border border-border bg-background p-1 shadow-xl ${getMenuPlacementClass(index, filteredProducts.length)}`}
+                          >
                             <button type="button" onClick={() => { openBarcodePrintDialog(product); setMenuOpenId(null); }} className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium hover:bg-muted">Print Barcode</button>
                             <button type="button" onClick={() => { handleEditProduct(product); setMenuOpenId(null); }} className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium hover:bg-muted">Edit</button>
                             <button type="button" onClick={() => { handleDeleteProduct(product); setMenuOpenId(null); }} className="block w-full rounded-md px-3 py-2 text-left text-xs font-medium text-destructive hover:bg-destructive/10">Delete</button>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import SectionPage from "../Shared/SectionPage";
-import { apiGet, apiPost, formatCurrency } from "../../lib/api";
+import { apiDelete, apiGet, apiPost, formatCurrency, getStoredUser } from "../../lib/api";
 import {
   Dialog,
   DialogContent,
@@ -19,11 +19,16 @@ function Customers() {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [activeCustomer, setActiveCustomer] = useState(null);
   const [form, setForm] = useState({
     name: "",
     phone: "",
     address: "",
   });
+  const canManageCustomers = getStoredUser()?.role === "admin";
 
   useEffect(() => {
     let active = true;
@@ -112,6 +117,30 @@ function Customers() {
       setSubmitError(err.message || "Failed to add customer");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const openDeleteDialog = (customer) => {
+    setActiveCustomer(customer);
+    setDeleteError("");
+    setDeleteOpen(true);
+  };
+
+  const handleDeleteCustomer = async () => {
+    if (!activeCustomer) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      await apiDelete(`/api/customers/${activeCustomer.id}`);
+      setCustomers((prev) => prev.filter((customer) => customer.id !== activeCustomer.id));
+      setDeleteOpen(false);
+      setActiveCustomer(null);
+    } catch (err) {
+      setDeleteError(err.message || "Failed to delete customer");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -223,6 +252,46 @@ function Customers() {
           </Dialog>
         </div>
 
+        <Dialog
+          open={deleteOpen}
+          onOpenChange={(nextOpen) => {
+            setDeleteOpen(nextOpen);
+            if (!nextOpen) {
+              setDeleteError("");
+              setActiveCustomer(null);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Delete Customer</DialogTitle>
+              <DialogDescription>
+                Delete {activeCustomer?.name || "this customer"} only if there is no sale or payment history linked to the record.
+              </DialogDescription>
+            </DialogHeader>
+
+            {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+
+            <DialogFooter>
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(false)}
+                className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteCustomer}
+                disabled={deleting}
+                className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground disabled:opacity-60"
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
       <div className="overflow-x-auto rounded-2xl border border-border/60">
         <table className="w-full min-w-full text-sm">
           <thead className="bg-muted/30 text-left">
@@ -231,6 +300,7 @@ function Customers() {
               <th className="px-3 py-2">Phone</th>
               <th className="px-3 py-2">Address</th>
               <th className="px-3 py-2">Due</th>
+              {canManageCustomers ? <th className="px-3 py-2">Action</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -240,11 +310,25 @@ function Customers() {
                 <td className="px-3 py-2">{customer.phone || "-"}</td>
                 <td className="px-3 py-2">{customer.address || "-"}</td>
                 <td className="px-3 py-2">{formatCurrency(customer.due_amount)}</td>
+                {canManageCustomers ? (
+                  <td className="px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => openDeleteDialog(customer)}
+                      className="rounded-md border border-destructive/50 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                ) : null}
               </tr>
             ))}
             {!loading && filteredCustomers.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                <td
+                  colSpan={canManageCustomers ? 5 : 4}
+                  className="px-3 py-6 text-center text-sm text-muted-foreground"
+                >
                   No customers found.
                 </td>
               </tr>

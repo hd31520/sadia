@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router";
+import { Navigate, useNavigate } from "react-router";
 import AuthShell from "./AuthShell";
 import { publicPost, setAuthSession, getAuthToken } from "../../lib/api";
 
@@ -47,14 +47,6 @@ function Login() {
     <AuthShell
       title="Welcome back"
       description="Log in to manage sales, workers, products, attendance, and salary data."
-      footer={
-        <p>
-          First-time setup?{" "}
-          <Link to="/register" className="font-medium text-primary hover:underline">
-            Create the first admin account
-          </Link>
-        </p>
-      }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <label className="block text-sm text-muted-foreground">

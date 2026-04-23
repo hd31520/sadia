@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import SectionPage from "../Shared/SectionPage";
 import { apiGet, apiPost, formatCurrency } from "../../lib/api";
 import {
+  createSingleMemoItem,
+  formatMemoAmount,
+  printMemoSheet,
+} from "../../lib/memo";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -39,13 +44,18 @@ function DueManagement() {
     due_amount: "",
     due_date: "",
   });
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historyRows, setHistoryRows] = useState([]);
+  const [historyCustomer, setHistoryCustomer] = useState(null);
 
   const loadDueCustomers = async () => {
     setLoading(true);
     try {
       const [customerPayload, salesPayload] = await Promise.all([
-        apiGet("/api/customers?has_due=true"),
-        apiGet("/api/sales?due_only=true"),
+        apiGet("/api/customers?history_due=true"),
+        apiGet("/api/sales?due_history=true"),
       ]);
       setCustomers(customerPayload || []);
       setSalesDue(salesPayload || []);
@@ -84,28 +94,23 @@ function DueManagement() {
     setCollectError("");
   };
 
-  const getDefaultCollectCustomerId = (preferredCustomerId = "") => {
-    if (preferredCustomerId) {
-      return String(preferredCustomerId);
-    }
-
-    const firstDueCustomer = customers.find((customer) => Number(customer.due_amount || 0) > 0);
-    return firstDueCustomer ? String(firstDueCustomer.id) : "";
+  const resetHistoryState = () => {
+    setHistoryRows([]);
+    setHistoryError("");
+    setHistoryCustomer(null);
   };
 
-  const openCollectFromSale = (sale) => {
-    const due = Number(sale.due_amount || 0);
-    const defaultCustomerId = getDefaultCollectCustomerId(sale.customer_id);
-    const defaultCustomer = customers.find((customer) => String(customer.id) === String(defaultCustomerId));
+  const openCollectFromCustomer = (customer) => {
+    const due = Number(customer.due_amount || 0);
     setCollectError("");
     setCollectForm({
-      customer_id: defaultCustomerId,
-      sale_id: String(sale.id),
-      customer_name: defaultCustomer?.name || sale.customer_name || "Customer",
-      reference: sale.invoice_no || `Sale #${sale.id}`,
+      customer_id: String(customer.id),
+      sale_id: "",
+      customer_name: customer.name || "Customer",
+      reference: `Ledger-${customer.id}`,
       max_due: String(due.toFixed(2)),
       amount: String(due.toFixed(2)),
-      note: `Due collection for ${sale.invoice_no}`,
+      note: `Ledger due collection for ${customer.name || "customer"}`,
     });
     setCollectOpen(true);
   };
@@ -113,6 +118,38 @@ function DueManagement() {
   const handleCollectChange = (event) => {
     const { name, value } = event.target;
     setCollectForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const openHistoryDialog = async (entry) => {
+    const customerId = Number(entry.customer_id || entry.id || 0);
+    if (!customerId) {
+      return;
+    }
+
+    const customerRecord =
+      customers.find((customer) => Number(customer.id) === customerId) ||
+      {
+        id: customerId,
+        name: entry.customer_name || entry.name || "Customer",
+        phone: entry.customer_phone || "",
+        address: entry.customer_address || "",
+        due_amount: entry.due_amount || 0,
+      };
+
+    setHistoryCustomer(customerRecord);
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    setHistoryError("");
+
+    try {
+      const payload = await apiGet(`/api/payments/customer/${customerId}`);
+      setHistoryRows(payload || []);
+    } catch (err) {
+      setHistoryError(err.message || "Failed to load payment history");
+      setHistoryRows([]);
+    } finally {
+      setHistoryLoading(false);
+    }
   };
 
   const handleCollectDue = async (event) => {
@@ -171,79 +208,78 @@ function DueManagement() {
     }
   };
 
-  const printCollectionMemo = async (payment) => {
-    const printableHtml = `
-      <html>
-        <head>
-          <title>Due Collection Memo</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 16px; color: #111; }
-            .line { border-top: 1px solid #333; margin: 8px 0; }
-          </style>
-        </head>
-        <body>
-          <h3 style="margin:0;">Due Collection Memo</h3>
-          <div class="line"></div>
-          <p><strong>Customer:</strong> ${payment.customer_name || "-"}</p>
-          <p><strong>Reference:</strong> ${payment.invoice_no || collectForm.reference || "Ledger"}</p>
-          <p><strong>Source:</strong> ${payment.sale_source || "ledger"}</p>
-          <p><strong>Collected Amount:</strong> ${formatCurrency(payment.amount || 0)}</p>
-          <p><strong>Date:</strong> ${new Date(payment.payment_date || Date.now()).toLocaleString()}</p>
-          <p><strong>Note:</strong> ${payment.note || "-"}</p>
-        </body>
-      </html>
-    `;
+  const printCollectionMemo = async (payment, customerContext = null) => {
+    const customerAddress =
+      payment.customer_address ||
+      customerContext?.address ||
+      customers.find((customer) => String(customer.id) === String(payment.customer_id || collectForm.customer_id))
+        ?.address ||
+      "";
+    const reference = payment.invoice_no || collectForm.reference || "Ledger";
 
-    const printWindow = window.open("", "_blank", "width=700,height=600");
-    if (!printWindow) {
-      return;
-    }
-
-    printWindow.document.open();
-    printWindow.document.write(printableHtml);
-    printWindow.document.close();
-
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-    }, 100);
+    await printMemoSheet({
+      browserTitle: `Collection ${reference}`,
+      title: "বাকি আদায় মেমো",
+      memoNo: payment.id ? `ADAY-${payment.id}` : reference,
+      date: payment.payment_date,
+      customerName: payment.customer_name || customerContext?.name || collectForm.customer_name || "-",
+      customerAddress,
+      items: [
+        createSingleMemoItem({
+          quantity: 1,
+          description: collectForm.sale_id ? `ইনভয়েস বাকি আদায় (${reference})` : "আগের বাকি আদায়",
+          measurement: payment.sale_source === "card" ? "কার্ড" : "হিসাব",
+          rate: payment.amount,
+          amount: payment.amount,
+        }),
+      ],
+      summaryRows: [{ label: "মোট আদায়", value: payment.amount, highlight: true }],
+      note: payment.note || `রেফারেন্স: ${reference}`,
+      footerLines: ["বি: দ্রঃ জমার রশিদ বুঝে গ্রহণ করুন।"],
+      leftSignatureLabel: "গ্রাহকের স্বাক্ষর",
+      rightSignatureLabel: "ক্যাশিয়ার",
+    });
   };
 
   const printDueRowMemo = async (entry) => {
-    const printableHtml = `
-      <html>
-        <head>
-          <title>Due Memo</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 16px; color: #111; }
-            .line { border-top: 1px solid #333; margin: 8px 0; }
-          </style>
-        </head>
-        <body>
-          <h3 style="margin:0;">Due Memo</h3>
-          <div class="line"></div>
-          <p><strong>Customer:</strong> ${entry.customer_name || entry.name || "-"}</p>
-          <p><strong>Reference:</strong> ${entry.invoice_no || "Ledger Due"}</p>
-          <p><strong>Source:</strong> ${entry.sale_source || "ledger"}</p>
-          <p><strong>Due Amount:</strong> ${formatCurrency(entry.due_amount || 0)}</p>
-          <p><strong>Date:</strong> ${entry.sale_date ? new Date(entry.sale_date).toLocaleString() : new Date().toLocaleString()}</p>
-        </body>
-      </html>
-    `;
+    const customerId = Number(entry.customer_id || entry.id || 0);
+    const customerAddress =
+      entry.customer_address ||
+      customers.find((customer) => Number(customer.id) === customerId)?.address ||
+      "";
+    const isInvoiceDue = Boolean(entry.invoice_no);
+    const reference = isInvoiceDue ? entry.invoice_no : `LEDGER-${customerId || entry.id}`;
+    const noteLines = [
+      `বর্তমান বাকি ${formatMemoAmount(entry.due_amount)} টাকা।`,
+    ];
 
-    const printWindow = window.open("", "_blank", "width=700,height=600");
-    if (!printWindow) {
-      return;
+    if (entry.due_date) {
+      noteLines.push(`বাকি তারিখ: ${new Date(entry.due_date).toLocaleDateString("bn-BD")}`);
     }
 
-    printWindow.document.open();
-    printWindow.document.write(printableHtml);
-    printWindow.document.close();
-
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-    }, 100);
+    await printMemoSheet({
+      browserTitle: `Due ${reference}`,
+      title: "বাকি মেমো",
+      memoNo: isInvoiceDue ? entry.id || reference : customerId || reference,
+      date: entry.sale_date || entry.due_date || Date.now(),
+      customerName: entry.customer_name || entry.name || "-",
+      customerAddress,
+      items: [
+        createSingleMemoItem({
+          serial: 1,
+          quantity: 1,
+          description: entry.invoice_no ? `ইনভয়েস বাকি (${entry.invoice_no})` : "গ্রাহকের লেজার বাকি",
+          measurement: entry.sale_source === "card" ? "কার্ড" : "হিসাব",
+          rate: entry.due_amount,
+          amount: entry.due_amount,
+        }),
+      ],
+      summaryRows: [{ label: "মোট বাকি", value: entry.due_amount, highlight: true }],
+      note: noteLines.join("\n"),
+      footerLines: ["বি: দ্রঃ অনুগ্রহ করে দ্রুত বকেয়া পরিশোধ করুন।"],
+      leftSignatureLabel: "গ্রাহকের স্বাক্ষর",
+      rightSignatureLabel: "বিক্রেতা",
+    });
   };
 
   const handleSubmitOldDue = async (event) => {
@@ -284,26 +320,22 @@ function DueManagement() {
   const stats = useMemo(() => {
     const totalLedgerDue = customers.reduce((acc, customer) => acc + Number(customer.due_amount || 0), 0);
     const totalInvoiceDue = salesDue.reduce((acc, sale) => acc + Number(sale.due_amount || 0), 0);
-    const maxDue = customers.reduce((max, customer) => {
-      const value = Number(customer.due_amount || 0);
-      return value > max ? value : max;
-    }, 0);
+    const activeLedgerCustomers = customers.filter((customer) => Number(customer.due_amount || 0) > 0).length;
+    const activeInvoiceSales = salesDue.filter((sale) => Number(sale.due_amount || 0) > 0).length;
 
     return [
-      { label: "Due Invoices", value: String(salesDue.length), hint: "Sale + Card due invoices" },
-      { label: "Invoice Due Total", value: formatCurrency(totalInvoiceDue), hint: "Outstanding invoice dues" },
-      { label: "Customer Ledger Due", value: formatCurrency(totalLedgerDue), hint: "Customer balance due total" },
-      { label: "Highest Single Due", value: formatCurrency(maxDue), hint: "Largest exposure on one customer" },
+      { label: "Active Invoice Dues", value: String(activeInvoiceSales), hint: "Invoices still unpaid now" },
+      { label: "Invoice Due Total", value: formatCurrency(totalInvoiceDue), hint: "Outstanding invoice balance" },
+      { label: "Due History Customers", value: String(customers.length), hint: "Customers kept visible after due clears" },
+      { label: "Ledger Due Total", value: formatCurrency(totalLedgerDue), hint: "Current customer balance due total" },
+      { label: "Active Ledger Dues", value: String(activeLedgerCustomers), hint: "Customers who still owe now" },
+      { label: "Due History Invoices", value: String(salesDue.length), hint: "Invoice records kept after clearing due" },
     ];
   }, [customers, salesDue]);
 
   const filteredCustomers = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
-    if (!query) {
-      return customers;
-    }
-
-    return customers.filter((customer) => {
+    const matchedCustomers = customers.filter((customer) => {
       const searchableValues = [
         customer.name,
         customer.phone,
@@ -312,17 +344,22 @@ function DueManagement() {
         String(customer.due_amount ?? ""),
       ];
 
-      return searchableValues.some((value) => String(value || "").toLowerCase().includes(query));
+      return !query || searchableValues.some((value) => String(value || "").toLowerCase().includes(query));
+    });
+
+    return [...matchedCustomers].sort((left, right) => {
+      const leftActive = Number(left.due_amount || 0) > 0 ? 1 : 0;
+      const rightActive = Number(right.due_amount || 0) > 0 ? 1 : 0;
+      if (leftActive !== rightActive) {
+        return rightActive - leftActive;
+      }
+      return Number(right.id || 0) - Number(left.id || 0);
     });
   }, [customers, searchTerm]);
 
   const filteredSalesDue = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
-    if (!query) {
-      return salesDue;
-    }
-
-    return salesDue.filter((sale) =>
+    const matchedSales = salesDue.filter((sale) =>
       [
         sale.invoice_no,
         sale.customer_name,
@@ -331,8 +368,17 @@ function DueManagement() {
         String(sale.paid_amount ?? ""),
         String(sale.due_amount ?? ""),
         sale.sale_date ? new Date(sale.sale_date).toLocaleString() : "",
-      ].some((value) => String(value || "").toLowerCase().includes(query))
+      ].some((value) => !query || String(value || "").toLowerCase().includes(query))
     );
+
+    return [...matchedSales].sort((left, right) => {
+      const leftActive = Number(left.due_amount || 0) > 0 ? 1 : 0;
+      const rightActive = Number(right.due_amount || 0) > 0 ? 1 : 0;
+      if (leftActive !== rightActive) {
+        return rightActive - leftActive;
+      }
+      return new Date(right.sale_date || 0).getTime() - new Date(left.sale_date || 0).getTime();
+    });
   }, [salesDue, searchTerm]);
 
   return (
@@ -345,17 +391,17 @@ function DueManagement() {
     >
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Invoice Dues</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Invoice History</p>
           <p className="mt-2 text-2xl font-semibold text-foreground">{filteredSalesDue.length}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Sales and card invoices still unpaid.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Active and cleared invoice dues stay visible here.</p>
         </div>
         <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Ledger Dues</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Ledger History</p>
           <p className="mt-2 text-2xl font-semibold text-foreground">{filteredCustomers.length}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Customer ledger balances to follow up.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Customer due history stays visible after clearing.</p>
         </div>
         <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Total Exposure</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Active Exposure</p>
           <p className="mt-2 text-2xl font-semibold text-foreground">
             {formatCurrency(
               filteredCustomers.reduce((sum, item) => sum + Number(item.due_amount || 0), 0) +
@@ -479,16 +525,14 @@ function DueManagement() {
         </Dialog>
       </div>
 
-      
-
       <div className="rounded-2xl border border-border/60 bg-card/70 p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold text-foreground">Invoice Due List</h3>
-            <p className="text-xs text-muted-foreground">Track open sale and card invoices that still have balance left.</p>
+            <h3 className="text-sm font-semibold text-foreground">Customer Due History</h3>
+            <p className="text-xs text-muted-foreground">Cleared ledger dues stay visible here until you remove records manually.</p>
           </div>
           <span className="rounded-full border border-border/60 bg-muted/20 px-3 py-1 text-xs text-muted-foreground">
-            {filteredSalesDue.length} records
+            {filteredCustomers.length} customers
           </span>
         </div>
 
@@ -496,39 +540,56 @@ function DueManagement() {
           <table className="w-full min-w-full text-sm">
             <thead className="bg-muted/30 text-left">
               <tr>
-                <th className="px-3 py-2">Invoice</th>
                 <th className="px-3 py-2">Customer</th>
-                <th className="px-3 py-2">Source</th>
-                <th className="px-3 py-2">Total</th>
-                <th className="px-3 py-2">Paid</th>
+                <th className="px-3 py-2">Phone</th>
+                <th className="px-3 py-2">Address</th>
+                <th className="px-3 py-2">Due Date</th>
                 <th className="px-3 py-2">Due</th>
-                <th className="px-3 py-2">Date</th>
+                <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Action</th>
               </tr>
             </thead>
             <tbody>
-              {filteredSalesDue.map((sale) => (
-                <tr key={sale.id} className="border-t border-border/50">
-                  <td className="px-3 py-2">{sale.invoice_no || `Sale #${sale.id}`}</td>
-                  <td className="px-3 py-2">{sale.customer_name || "Walk-in"}</td>
-                  <td className="px-3 py-2 capitalize">{sale.sale_source || "sale"}</td>
-                  <td className="px-3 py-2">{formatCurrency(sale.total_amount)}</td>
-                  <td className="px-3 py-2">{formatCurrency(sale.paid_amount)}</td>
-                  <td className="px-3 py-2 font-medium">{formatCurrency(sale.due_amount)}</td>
-                  <td className="px-3 py-2">{sale.sale_date ? new Date(sale.sale_date).toLocaleString() : "-"}</td>
+              {filteredCustomers.map((customer) => (
+                <tr key={customer.id} className="border-t border-border/50">
+                  <td className="px-3 py-2 font-medium">{customer.name}</td>
+                  <td className="px-3 py-2">{customer.phone || "-"}</td>
+                  <td className="px-3 py-2">{customer.address || "-"}</td>
                   <td className="px-3 py-2">
-                    <div className="flex gap-2">
+                    {customer.due_date ? new Date(customer.due_date).toLocaleDateString() : "-"}
+                  </td>
+                  <td className="px-3 py-2 font-medium">{formatCurrency(customer.due_amount)}</td>
+                  <td className="px-3 py-2">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                        Number(customer.due_amount || 0) > 0
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-emerald-100 text-emerald-800"
+                      }`}
+                    >
+                      {Number(customer.due_amount || 0) > 0 ? "Active Due" : "Cleared History"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => openCollectFromSale(sale)}
-                        disabled={Number(sale.due_amount || 0) <= 0}
+                        onClick={() => openCollectFromCustomer(customer)}
+                        disabled={Number(customer.due_amount || 0) <= 0}
                         className="rounded-md border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         Collect
                       </button>
                       <button
                         type="button"
-                        onClick={() => printDueRowMemo(sale)}
+                        onClick={() => openHistoryDialog(customer)}
+                        className="rounded-md border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                      >
+                        History
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => printDueRowMemo(customer)}
                         className="rounded-md border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted"
                       >
                         Print
@@ -537,10 +598,10 @@ function DueManagement() {
                   </td>
                 </tr>
               ))}
-              {!loading && filteredSalesDue.length === 0 ? (
+              {!loading && filteredCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-sm text-muted-foreground">
-                    No invoice due records found.
+                  <td colSpan={7} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No customer due history records found.
                   </td>
                 </tr>
               ) : null}
@@ -625,6 +686,104 @@ function DueManagement() {
               </button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={historyOpen}
+        onOpenChange={(nextOpen) => {
+          setHistoryOpen(nextOpen);
+          if (!nextOpen) {
+            resetHistoryState();
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Payment History</DialogTitle>
+            <DialogDescription>
+              {historyCustomer
+                ? `${historyCustomer.name} - current due ${formatCurrency(historyCustomer.due_amount || 0)}`
+                : "Customer payment history"}
+            </DialogDescription>
+          </DialogHeader>
+
+          {historyCustomer ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm">
+                <p className="text-xs text-muted-foreground">Customer</p>
+                <p className="font-medium">{historyCustomer.name || "-"}</p>
+              </div>
+              <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm">
+                <p className="text-xs text-muted-foreground">Phone</p>
+                <p className="font-medium">{historyCustomer.phone || "-"}</p>
+              </div>
+              <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm">
+                <p className="text-xs text-muted-foreground">Address</p>
+                <p className="font-medium">{historyCustomer.address || "-"}</p>
+              </div>
+            </div>
+          ) : null}
+
+          {historyLoading ? (
+            <p className="text-sm text-muted-foreground">Loading payment history...</p>
+          ) : historyError ? (
+            <p className="text-sm text-destructive">{historyError}</p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border/60">
+              <table className="w-full min-w-full text-sm">
+                <thead className="bg-muted/30 text-left">
+                  <tr>
+                    <th className="px-3 py-2">Date</th>
+                    <th className="px-3 py-2">Amount</th>
+                    <th className="px-3 py-2">Reference</th>
+                    <th className="px-3 py-2">Type</th>
+                    <th className="px-3 py-2">Note</th>
+                    <th className="px-3 py-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyRows.map((payment) => (
+                    <tr key={payment.id} className="border-t border-border/50">
+                      <td className="px-3 py-2">
+                        {payment.payment_date ? new Date(payment.payment_date).toLocaleString() : "-"}
+                      </td>
+                      <td className="px-3 py-2 font-medium">{formatCurrency(payment.amount)}</td>
+                      <td className="px-3 py-2">{payment.invoice_no || "Ledger"}</td>
+                      <td className="px-3 py-2 capitalize">{payment.sale_source || "ledger"}</td>
+                      <td className="px-3 py-2">{payment.note || "-"}</td>
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => printCollectionMemo(payment, historyCustomer)}
+                          className="rounded-md border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                        >
+                          Print
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!historyRows.length ? (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                        No payment history found for this customer.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(false)}
+              className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+            >
+              Close
+            </button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </SectionPage>

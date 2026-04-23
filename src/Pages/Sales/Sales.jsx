@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import QRCode from "qrcode";
-import { Eye, MoreVertical, Printer, PlusCircle } from "lucide-react";
+import { Eye, MoreVertical, PlusCircle, Printer, Trash2 } from "lucide-react";
 import SectionPage from "../Shared/SectionPage";
-import { apiGet, apiPost, formatCurrency } from "../../lib/api";
+import { apiDelete, apiGet, apiPost, formatCurrency, getStoredUser } from "../../lib/api";
 import { buildDateRangeQuery, getDateRangePreset } from "../../lib/dateRange";
+import {
+  createSaleMemoItems,
+  formatMemoAmount,
+  printMemoSheet,
+} from "../../lib/memo";
 import {
   Dialog,
   DialogContent,
@@ -22,11 +26,6 @@ const formatUnitLabel = (unitType) => {
 };
 
 function Sales() {
-  const companyName = import.meta.env.VITE_COMPANY_NAME || "M/s Sadia Auto Parts";
-  const companyAddress = import.meta.env.VITE_COMPANY_ADDRESS || "Kanaipur , Faridpur";
-  const companyProprietor = import.meta.env.VITE_COMPANY_PROPRIETOR || "Owner";
-  const companyPhone = import.meta.env.VITE_COMPANY_PHONE || "+8801741165673";
-
   const [sales, setSales] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -43,6 +42,10 @@ function Sales() {
   const [dueOpen, setDueOpen] = useState(false);
   const [dueSubmitting, setDueSubmitting] = useState(false);
   const [dueError, setDueError] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [activeSale, setActiveSale] = useState(null);
   const [dueForm, setDueForm] = useState({
     sale_id: "",
     customer_id: "",
@@ -68,6 +71,7 @@ function Sales() {
     due_amount: "0",
     items: [{ product_id: "", quantity: "1" }],
   });
+  const canManageSales = getStoredUser()?.role === "admin";
 
   const rangeQuery = useMemo(
     () => buildDateRangeQuery(period, customStartDate, customEndDate),
@@ -187,6 +191,37 @@ function Sales() {
       note: `Due payment for ${sale.invoice_no}`,
     });
     setDueOpen(true);
+  };
+
+  const openDeleteDialog = (sale) => {
+    setMenuSaleId(null);
+    setDeleteError("");
+    setActiveSale(sale);
+    setDeleteOpen(true);
+  };
+
+  const handleDeleteSale = async () => {
+    if (!activeSale) {
+      return;
+    }
+
+    try {
+      setDeleteSubmitting(true);
+      await apiDelete(`/api/sales/${activeSale.id}`);
+      setSales((prev) => prev.filter((sale) => Number(sale.id) !== Number(activeSale.id)));
+
+      if (detailSale && Number(detailSale.id) === Number(activeSale.id)) {
+        setDetailOpen(false);
+        setDetailSale(null);
+      }
+
+      setDeleteOpen(false);
+      setActiveSale(null);
+    } catch (err) {
+      setDeleteError(err.message || "Failed to delete sale");
+    } finally {
+      setDeleteSubmitting(false);
+    }
   };
 
   const handleDueFormChange = (event) => {
@@ -533,115 +568,38 @@ function Sales() {
   };
 
   const printMemo = async ({ sale, customerName, soldItems, total, paid, due }) => {
-    const qrDataUrl = await QRCode.toDataURL(`ORDER:${sale.invoice_no}`, {
-      width: 140,
-      margin: 1,
-      color: {
-        dark: "#000000",
-        light: "#ffffff",
-      },
-    });
-
-    const rowsHtml = soldItems
-      .map(
-        (item, index) => `
-          <tr>
-            <td style="padding:4px;border:1px solid #d4d4d4;">${index + 1}</td>
-            <td style="padding:4px;border:1px solid #d4d4d4;">${item.product?.name || item.product_name || "Unknown"}</td>
-            <td style="padding:4px;border:1px solid #d4d4d4;text-align:right;">${item.quantity} ${formatUnitLabel(item.product?.unit_type || item.unit_type)}</td>
-            <td style="padding:4px;border:1px solid #d4d4d4;text-align:right;">${Number(item.product?.price ?? item.unit_price ?? 0).toFixed(2)}</td>
-            <td style="padding:4px;border:1px solid #d4d4d4;text-align:right;">${Number(item.lineTotal ?? item.total_price ?? 0).toFixed(2)}</td>
-          </tr>
-        `
-      )
-      .join("");
-
-    const printableHtml = `
-      <html>
-        <head>
-          <title>Memo ${sale.invoice_no}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 16px; color: #111; }
-            .center { text-align: center; }
-            .line { border-top: 1px solid #333; margin: 8px 0; }
-            table { width: 100%; border-collapse: collapse; font-size: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="center">
-            <h2 style="margin:0;">${companyName}</h2>
-            <p style="margin:4px 0;">${companyAddress}</p>
-            <p style="margin:4px 0;">Proprietor: ${companyProprietor} | Phone: ${companyPhone}</p>
-          </div>
-          <div class="line"></div>
-          <p style="margin:4px 0;"><strong>Order No:</strong> ${sale.invoice_no}</p>
-          <p style="margin:4px 0;"><strong>Date:</strong> ${new Date(sale.sale_date || Date.now()).toLocaleString()}</p>
-          <p style="margin:4px 0;"><strong>Customer:</strong> ${customerName}</p>
-          <div class="line"></div>
-          <table>
-            <thead>
-              <tr>
-                <th style="padding:4px;border:1px solid #d4d4d4;">#</th>
-                <th style="padding:4px;border:1px solid #d4d4d4;">Product</th>
-                <th style="padding:4px;border:1px solid #d4d4d4;">Qty</th>
-                <th style="padding:4px;border:1px solid #d4d4d4;">Rate</th>
-                <th style="padding:4px;border:1px solid #d4d4d4;">Amount</th>
-              </tr>
-            </thead>
-            <tbody>${rowsHtml}</tbody>
-          </table>
-          <div class="line"></div>
-          <p style="margin:4px 0;"><strong>Total:</strong> ${Number(total).toFixed(2)}</p>
-          <p style="margin:4px 0;"><strong>Paid:</strong> ${Number(paid).toFixed(2)}</p>
-          <p style="margin:4px 0;"><strong>Due:</strong> ${Number(due).toFixed(2)}</p>
-          <div class="center" style="margin-top:12px;">
-            <img src="${qrDataUrl}" alt="Order QR" style="height:120px;width:120px;" />
-            <p style="margin:6px 0 0;">Scan QR for order: ${sale.invoice_no}</p>
-          </div>
-        </body>
-      </html>
-    `;
-
-    const printWindow = window.open("", "_blank", "width=800,height=700");
-    if (!printWindow) {
-      return;
+    const customerAddress =
+      customers.find((entry) => Number(entry.id) === Number(sale.customer_id))?.address || "";
+    const memoNotes = [];
+    if (sale.invoice_no) {
+      memoNotes.push(`ইনভয়েস নং: ${sale.invoice_no}`);
     }
+    memoNotes.push(
+      Number(due || 0) > 0
+        ? `এই মেমোতে ${formatMemoAmount(due)} টাকা বাকি রয়েছে।`
+        : "এই মেমোর সব টাকা পরিশোধ করা হয়েছে।"
+    );
 
-    printWindow.document.open();
-    printWindow.document.write(printableHtml);
-    printWindow.document.close();
-
-    await new Promise((resolve) => {
-      const images = Array.from(printWindow.document.images || []);
-      if (!images.length) {
-        resolve();
-        return;
-      }
-
-      let loaded = 0;
-      const done = () => {
-        loaded += 1;
-        if (loaded >= images.length) {
-          resolve();
-        }
-      };
-
-      images.forEach((img) => {
-        if (img.complete) {
-          done();
-          return;
-        }
-        img.onload = done;
-        img.onerror = done;
-      });
-
-      setTimeout(resolve, 2000);
+    await printMemoSheet({
+      browserTitle: `Memo ${sale.invoice_no || sale.id || ""}`,
+      title: "ক্যাশ মেমো",
+      memoNo: sale.id || sale.invoice_no,
+      date: sale.sale_date,
+      customerName,
+      customerAddress,
+      items: createSaleMemoItems(soldItems),
+      summaryRows: [
+        { label: "সর্বমোট", value: total, highlight: true },
+        { label: "পরিশোধ", value: paid },
+        { label: "বাকি", value: due, emphasis: Number(due || 0) > 0 },
+      ],
+      note: memoNotes.join("\n"),
+      footerLines: ["বি: দ্রঃ বিক্রিত মাল ফেরত নেওয়া হয় না।", "সততাই উন্নয়নের প্রথম ধাপ"],
+      leftSignatureLabel: "ক্রেতার স্বাক্ষর",
+      rightSignatureLabel: "বিক্রেতার স্বাক্ষর",
+      qrText: sale.invoice_no ? `ORDER:${sale.invoice_no}` : "",
+      qrCaption: sale.invoice_no ? `ইনভয়েস: ${sale.invoice_no}` : "",
     });
-
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-    }, 120);
   };
 
   const handleSubmit = async (event) => {
@@ -1135,6 +1093,16 @@ function Sales() {
                           <PlusCircle className="h-4 w-4" />
                           Add Due
                         </button>
+                        {canManageSales ? (
+                          <button
+                            type="button"
+                            onClick={() => openDeleteDialog(sale)}
+                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive hover:bg-muted"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete Sale
+                          </button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -1235,6 +1203,46 @@ function Sales() {
               </DialogFooter>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(nextOpen) => {
+          setDeleteOpen(nextOpen);
+          if (!nextOpen) {
+            setDeleteError("");
+            setActiveSale(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Sale</DialogTitle>
+            <DialogDescription>
+              Delete invoice {activeSale?.invoice_no || activeSale?.id || ""} only when it has no due-payment history.
+            </DialogDescription>
+          </DialogHeader>
+
+          {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(false)}
+              className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteSale}
+              disabled={deleteSubmitting}
+              className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground disabled:opacity-60"
+            >
+              {deleteSubmitting ? "Deleting..." : "Delete"}
+            </button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
