@@ -24,6 +24,10 @@ function createDefaultApiBases() {
   const bases = [];
   const browserOriginBase = getBrowserOriginBase();
 
+  if (configuredApiBase && !isDev) {
+    return bases;
+  }
+
   if (browserOriginBase) {
     bases.push(browserOriginBase);
   }
