@@ -4,6 +4,7 @@ import SalesTrendChart from "./SalesTrendChart";
 import SectionPage from "../Shared/SectionPage";
 import { apiGet, formatCurrency } from "../../lib/api";
 import { buildDateRangeQuery, getDateRangePreset } from "../../lib/dateRange";
+import { CART_ROUTE_PATH } from "../../lib/cart-route";
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -101,7 +102,7 @@ function Dashboard() {
 
   const quickLinks = [
     { label: "New Sale", hint: "Create invoice", path: "/sale" },
-    { label: "Cart", hint: "Fast counter flow", path: "/cart" },
+    { label: "Cart", hint: "Fast counter flow", path: CART_ROUTE_PATH },
     { label: "Products", hint: "Manage catalog", path: "/product" },
     { label: "Reports", hint: "Export insights", path: "/report" },
   ];

@@ -3,6 +3,11 @@ import { createHashRouter, Navigate } from "react-router";
 import Root from "../layout/Root";
 import RequireAuth from "../components/RequireAuth";
 import { getAuthToken } from "../lib/api";
+import {
+    CART_ROUTE_ALIAS_SEGMENTS,
+    CART_ROUTE_PATH,
+    CART_ROUTE_SEGMENT,
+} from "../lib/cart-route";
 
 const Dashboard = lazy(() => import("../Pages/Dashboard/Dashboard"));
 const Sales = lazy(() => import("../Pages/Sales/Sales"));
@@ -56,13 +61,13 @@ const router = createHashRouter([
                 element: withSuspense(<Sales />),
             },
             {
-                path: "cart",
+                path: CART_ROUTE_SEGMENT,
                 element: withSuspense(<CartSale />),
             },
-            {
-                path: "card",
-                element: <Navigate to="/cart" replace />,
-            },
+            ...CART_ROUTE_ALIAS_SEGMENTS.map((alias) => ({
+                path: alias,
+                element: <Navigate to={CART_ROUTE_PATH} replace />,
+            })),
             {
                 path: "product",
                 element: withSuspense(<Products />),

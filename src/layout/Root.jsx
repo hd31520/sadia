@@ -20,11 +20,12 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { cn } from "../lib/utils";
 import { clearAuthSession, getStoredUser } from "../lib/api";
 import { useTheme } from "../components/use-theme";
+import { CART_ROUTE_PATH, isCartRoutePath } from "../lib/cart-route";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/sale", label: "Sale", icon: ShoppingCart },
-  { to: "/cart", label: "Cart", icon: CreditCard },
+  { to: CART_ROUTE_PATH, label: "Cart", icon: CreditCard },
   { to: "/product", label: "Product", icon: Box },
   { to: "/inventory", label: "Inventory", icon: Boxes },
   { to: "/due-management", label: "Due Management", icon: WalletCards },
@@ -56,16 +57,24 @@ function Root() {
       return "Worker History";
     }
 
+    if (isCartRoutePath(location.pathname)) {
+      return "Cart";
+    }
+
     const found = visibleNavItems.find((item) => item.to === location.pathname);
     return found ? found.label : "Dashboard";
   }, [location.pathname, visibleNavItems]);
 
-  const isCartRoute = /^\/(cart|card)$/i.test(location.pathname);
+  const isCartRoute = isCartRoutePath(location.pathname);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    setIsOpen(false);
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground">

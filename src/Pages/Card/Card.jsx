@@ -61,6 +61,20 @@ const secondaryButtonClass =
   "inline-flex items-center justify-center gap-2 rounded-[18px] border border-slate-200/80 bg-white/88 px-4 py-3 text-sm font-medium text-slate-700 shadow-[0_10px_28px_rgba(15,23,42,0.06)] outline-none transition hover:bg-white focus:ring-4 focus:ring-primary/15 dark:border-white/10 dark:bg-slate-950/75 dark:text-slate-200";
 const microButtonClass =
   "inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200/80 bg-white/90 text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.06)] outline-none transition hover:border-primary/30 hover:text-primary focus:ring-4 focus:ring-primary/15 disabled:pointer-events-none disabled:opacity-45 dark:border-white/10 dark:bg-slate-950/75 dark:text-slate-300";
+const CART_SALE_SOURCE_LABELS = new Set(["cart", "card", "cart-sale", "pos", "checkout"]);
+
+function formatSaleSourceLabel(value) {
+  const normalized = String(value || "cart").trim().toLowerCase();
+  if (!normalized || CART_SALE_SOURCE_LABELS.has(normalized)) {
+    return "Cart";
+  }
+
+  return normalized
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
 function HeroStatCard({ icon: Icon, label, value, hint }) {
   return (
@@ -225,7 +239,7 @@ function CartTriggerBar({ cartCount, totalAmount, dueAmount, customerName, onOpe
       onClick={onOpen}
       className={cn(
         glassPanelClass,
-        "sticky top-24 z-10 flex w-full items-center justify-between gap-4 p-4 text-left outline-none focus:ring-4 focus:ring-primary/20 xl:hidden"
+        "sticky top-24 z-10 flex w-full flex-col items-start gap-4 p-4 text-left outline-none focus:ring-4 focus:ring-primary/20 sm:flex-row sm:items-center sm:justify-between xl:hidden"
       )}
       aria-label="Open cart details"
     >
@@ -237,13 +251,16 @@ function CartTriggerBar({ cartCount, totalAmount, dueAmount, customerName, onOpe
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
             Cart Details
           </p>
-          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
+          <p className="hidden truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
             {cartCount} item{cartCount === 1 ? "" : "s"} · {customerName}
+          </p>
+          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
+            {cartCount} item{cartCount === 1 ? "" : "s"} - {customerName}
           </p>
           <p className="truncate text-xs text-slate-500 dark:text-slate-400">Tap to review customer, items, and payment</p>
         </div>
       </div>
-      <div className="shrink-0 text-right">
+      <div className="w-full shrink-0 text-left sm:w-auto sm:text-right">
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
           Total
         </p>
@@ -318,8 +335,11 @@ function CartDetailsPanel({
             >
               Cart Details
             </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+            <p className="hidden mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
               {customerName} · {cartCount} item{cartCount === 1 ? "" : "s"} in this sale
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              {customerName} - {cartCount} item{cartCount === 1 ? "" : "s"} in this sale
             </p>
             {onClose ? (
               <p className="sr-only">
@@ -502,8 +522,11 @@ function CartDetailsPanel({
                             <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
                               {row.product.name}
                             </p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                            <p className="hidden text-xs text-slate-500 dark:text-slate-400">
                               {formatCurrency(row.unitPrice)} each · {stock} available
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              {formatCurrency(row.unitPrice)} each - {stock} available
                             </p>
                           </div>
                           <button
@@ -516,7 +539,7 @@ function CartDetailsPanel({
                           </button>
                         </div>
 
-                        <div className="mt-3 flex items-center justify-between gap-3">
+                        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div className="inline-flex items-center rounded-full border border-slate-200/80 bg-white/90 p-1 shadow-[0_10px_24px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-slate-950/75">
                             <button
                               type="button"
@@ -715,7 +738,7 @@ function CartDetailsPanel({
 
         {submitError ? <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{submitError}</p> : null}
 
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <button type="button" onClick={onClear} className={secondaryButtonClass}>
             Clear
           </button>
@@ -808,7 +831,7 @@ function CardSale() {
         }
       } catch (err) {
         if (active) {
-          setError(err.message || "Failed to load card sale data");
+          setError(err.message || "Failed to load cart sale data");
         }
       } finally {
         if (active) {
@@ -1363,6 +1386,16 @@ function CardSale() {
         : "এই মেমোর সব টাকা পরিশোধ করা হয়েছে।"
     );
 
+    memoNotes.length = 0;
+    if (sale.invoice_no) {
+      memoNotes.push(`Invoice No: ${sale.invoice_no}`);
+    }
+    memoNotes.push(
+      Number(due || 0) > 0
+        ? `Outstanding due on this memo: ${formatMemoAmount(due)}.`
+        : "This memo has been paid in full."
+    );
+
     await printMemoSheet({
       browserTitle: `Memo ${sale.invoice_no || sale.id || ""}`,
       title: "ক্যাশ মেমো",
@@ -1382,6 +1415,16 @@ function CardSale() {
       rightSignatureLabel: "বিক্রেতার স্বাক্ষর",
       qrText: sale.invoice_no ? `ORDER:${sale.invoice_no}` : "",
       qrCaption: sale.invoice_no ? `ইনভয়েস: ${sale.invoice_no}` : "",
+      title: "Cash Memo",
+      summaryRows: [
+        { label: "Total", value: total, highlight: true },
+        { label: "Paid", value: paid },
+        { label: "Due", value: due, emphasis: Number(due || 0) > 0 },
+      ],
+      footerLines: ["Note: Sold goods are not returnable.", "Thank you for your business."],
+      leftSignatureLabel: "Customer Signature",
+      rightSignatureLabel: "Seller Signature",
+      qrCaption: sale.invoice_no ? `Invoice: ${sale.invoice_no}` : "",
     });
   };
 
@@ -1559,7 +1602,7 @@ function CardSale() {
                   Desktop keeps Cart Details visible. On mobile, tap the Cart Details bar to open the dialog.
                 </p>
                 <p className="hidden mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  {cartCount} item{cartCount === 1 ? "" : "s"} · Due {formatCurrency(displayDueAmount)}
+                  {cartCount} item{cartCount === 1 ? "" : "s"} - Due {formatCurrency(displayDueAmount)}
                 </p>
               </div>
 
@@ -1593,11 +1636,12 @@ function CardSale() {
           ))}
         </div>
 
-        <div className="relative xl:pr-[24rem]">
-          <div className={cn(glassPanelClass, "overflow-visible p-4 sm:p-6 xl:p-7")}>
-            <div className="absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(148,163,184,0.16),transparent_28%)]" />
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)] 2xl:grid-cols-[minmax(0,1fr)_26rem] xl:items-start">
+          <div className="min-w-0">
+            <div className={cn(glassPanelClass, "overflow-visible p-4 sm:p-6 xl:p-7")}>
+              <div className="absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(148,163,184,0.16),transparent_28%)]" />
 
-            <div className="relative space-y-6">
+              <div className="relative space-y-6">
               <CartTriggerBar
                 cartCount={cartCount}
                 totalAmount={totalAmount}
@@ -1606,7 +1650,7 @@ function CardSale() {
                 onOpen={() => setMobileCartOpen(true)}
               />
 
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)]">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)]">
                 <label className={cn(glassPanelClass, "p-4")}>
                   <div className="flex items-center gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-primary/10 text-primary">
@@ -1638,7 +1682,7 @@ function CardSale() {
                     </div>
                   </div>
 
-                  <div className="mt-3 flex gap-3">
+                  <div className="mt-3 flex flex-col gap-3 sm:flex-row">
                     <input
                       ref={barcodeRef}
                       value={barcode}
@@ -1656,7 +1700,7 @@ function CardSale() {
                     <button
                       type="button"
                       onClick={handleBarcodeAdd}
-                      className={primaryButtonClass}
+                      className={cn(primaryButtonClass, "sm:shrink-0")}
                       aria-label="Add barcode item"
                     >
                       Add
@@ -1669,7 +1713,7 @@ function CardSale() {
                 icon={CalendarRange}
                 eyebrow="Period filter"
                 title="Invoice range controls"
-                description="Switch time periods quickly or define a custom window to review invoice activity for this cart route."
+                description="Switch time periods quickly or define a custom window to review invoice activity for this cart workspace."
                 action={
                   <div className="inline-flex items-center rounded-full border border-primary/15 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">
                     {rangeLabel}
@@ -1735,7 +1779,7 @@ function CardSale() {
                 }
               >
                 {filteredProducts.length ? (
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                     {filteredProducts.map((product) => (
                       <ProductCardItem key={product.id} product={product} onAdd={addProductToCart} />
                     ))}
@@ -1755,7 +1799,7 @@ function CardSale() {
                 icon={ReceiptText}
                 eyebrow="Sales ledger"
                 title="Invoices and due collection"
-                description="Recent cart-route invoices stay on the same page so you can review totals and collect pending dues without leaving checkout."
+                description="Recent cart invoices stay on the same page so you can review totals and collect pending dues without leaving checkout."
                 action={
                   <div className="inline-flex items-center rounded-full border border-slate-200/80 bg-white/82 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:border-white/10 dark:bg-slate-950/60 dark:text-slate-300">
                     {salesLoading ? "Refreshing" : `${salesList.length} invoice${salesList.length === 1 ? "" : "s"}`}
@@ -1792,7 +1836,7 @@ function CardSale() {
                               <div>
                                 <p className="font-semibold text-slate-900 dark:text-slate-50">{sale.invoice_no}</p>
                                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                  Source {String(sale.sale_source || "cart").toLowerCase() === "card" ? "Cart" : sale.sale_source || "Cart"}
+                                  Source {formatSaleSourceLabel(sale.sale_source)}
                                 </p>
                               </div>
                             </td>
@@ -1851,11 +1895,12 @@ function CardSale() {
                   </div>
                 </div>
               </WorkspaceSection>
+              </div>
             </div>
           </div>
 
-          <aside className="hidden xl:block" aria-label="Cart details">
-            <div className="fixed bottom-8 right-8 top-24 w-[22.5rem]">
+          <aside className="hidden min-w-0 xl:block" aria-label="Cart details">
+            <div className="sticky top-24 h-[calc(100vh-7.5rem)]">
               <CartDetailsPanel
                 customerId={customerId}
                 customers={customers}
