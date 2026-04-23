@@ -101,7 +101,7 @@ function Dashboard() {
 
   const quickLinks = [
     { label: "New Sale", hint: "Create invoice", path: "/sale" },
-    { label: "Card Sale", hint: "Fast counter flow", path: "/card" },
+    { label: "Cart", hint: "Fast counter flow", path: "/cart" },
     { label: "Products", hint: "Manage catalog", path: "/product" },
     { label: "Reports", hint: "Export insights", path: "/report" },
   ];

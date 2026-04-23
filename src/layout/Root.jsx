@@ -24,7 +24,7 @@ import { useTheme } from "../components/use-theme";
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/sale", label: "Sale", icon: ShoppingCart },
-  { to: "/card", label: "Card", icon: CreditCard },
+  { to: "/cart", label: "Cart", icon: CreditCard },
   { to: "/product", label: "Product", icon: Box },
   { to: "/inventory", label: "Inventory", icon: Boxes },
   { to: "/due-management", label: "Due Management", icon: WalletCards },
@@ -60,7 +60,7 @@ function Root() {
     return found ? found.label : "Dashboard";
   }, [location.pathname, visibleNavItems]);
 
-  const isCardRoute = location.pathname === "/card";
+  const isCartRoute = /^\/(cart|card)$/i.test(location.pathname);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60000);
@@ -75,7 +75,7 @@ function Root() {
         <aside
           className={cn(
             "fixed inset-y-0 left-0 z-40 w-[85vw] max-w-72 border-r border-sidebar-border/80 bg-sidebar/95 backdrop-blur-md transition-transform duration-300",
-            isCardRoute
+            isCartRoute
               ? isOpen
                 ? "translate-x-0 md:translate-x-0"
                 : "-translate-x-full md:-translate-x-full"
@@ -96,7 +96,7 @@ function Root() {
               onClick={() => setIsOpen(false)}
               className={cn(
                 "rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                !isCardRoute && "md:hidden"
+                !isCartRoute && "md:hidden"
               )}
             >
               <X className="h-5 w-5" />
@@ -142,16 +142,16 @@ function Root() {
           <button
             type="button"
             aria-label="Close menu backdrop"
-            className={cn("fixed inset-0 z-30 bg-black/40", !isCardRoute && "md:hidden")}
+            className={cn("fixed inset-0 z-30 bg-black/40", !isCartRoute && "md:hidden")}
             onClick={() => setIsOpen(false)}
           />
         ) : null}
 
-        <div className={cn("flex min-w-0 flex-1 flex-col overflow-x-hidden", !isCardRoute && "md:pl-72")}>
+        <div className={cn("flex min-w-0 flex-1 flex-col overflow-x-hidden", !isCartRoute && "md:pl-72")}>
           <header
             className={cn(
               "fixed left-0 right-0 top-0 z-20 border-b border-border/70 bg-background/72 px-3 py-3 backdrop-blur-xl md:px-8",
-              isCardRoute ? "md:left-0" : "md:left-72"
+              isCartRoute ? "md:left-0" : "md:left-72"
             )}
           >
             <div className="flex items-start justify-between gap-3 sm:items-center">
@@ -161,7 +161,7 @@ function Root() {
                 onClick={() => setIsOpen(true)}
                 className={cn(
                   "rounded-md border border-border bg-card p-2 text-foreground",
-                  isCardRoute ? "inline-flex" : "md:hidden"
+                  isCartRoute ? "inline-flex" : "md:hidden"
                 )}
               >
                 <Menu className="h-5 w-5" />

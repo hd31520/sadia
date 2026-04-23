@@ -14,7 +14,7 @@ const Salary = lazy(() => import("../Pages/Salary/Salary"));
 const Suppliers = lazy(() => import("../Pages/Suppliers/Suppliers"));
 const Workers = lazy(() => import("../Pages/Workers/Workers"));
 const WorkerAttendanceHistory = lazy(() => import("../Pages/Workers/WorkerAttendanceHistory"));
-const CardSale = lazy(() => import("../Pages/Card/Card"));
+const CartSale = lazy(() => import("../Pages/Card/Card"));
 const Login = lazy(() => import("../Pages/Auth/Login"));
 const Report = lazy(() => import("../Pages/Report/Report"));
 
@@ -56,8 +56,12 @@ const router = createHashRouter([
                 element: withSuspense(<Sales />),
             },
             {
+                path: "cart",
+                element: withSuspense(<CartSale />),
+            },
+            {
                 path: "card",
-                element: withSuspense(<CardSale />),
+                element: <Navigate to="/cart" replace />,
             },
             {
                 path: "product",

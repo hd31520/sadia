@@ -750,7 +750,11 @@ function DueManagement() {
                       </td>
                       <td className="px-3 py-2 font-medium">{formatCurrency(payment.amount)}</td>
                       <td className="px-3 py-2">{payment.invoice_no || "Ledger"}</td>
-                      <td className="px-3 py-2 capitalize">{payment.sale_source || "ledger"}</td>
+                      <td className="px-3 py-2 capitalize">
+                        {["card", "cart"].includes(String(payment.sale_source || "").toLowerCase())
+                          ? "cart"
+                          : payment.sale_source || "ledger"}
+                      </td>
                       <td className="px-3 py-2">{payment.note || "-"}</td>
                       <td className="px-3 py-2">
                         <button
