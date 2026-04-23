@@ -266,7 +266,7 @@ function Customers() {
             <DialogHeader>
               <DialogTitle>Delete Customer</DialogTitle>
               <DialogDescription>
-                Delete {activeCustomer?.name || "this customer"} only if there is no sale or payment history linked to the record.
+                Delete {activeCustomer?.name || "this customer"} from the active customer list. Historical sales and payments stay saved, and any outstanding due must be cleared first.
               </DialogDescription>
             </DialogHeader>
 
