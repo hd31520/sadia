@@ -1,6 +1,15 @@
 const configuredApiBase = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const apiPortStart = Number(import.meta.env.VITE_API_PORT_START || 5050);
 const apiPortEnd = Number(import.meta.env.VITE_API_PORT_END || 5059);
+const mode = String(import.meta.env.MODE || "").toLowerCase();
+const isLocalBrowser =
+  typeof window !== "undefined" &&
+  /^(localhost|127\.0\.0\.1)$/i.test(String(window.location?.hostname || ""));
+const isDev =
+  Boolean(import.meta.env.DEV) ||
+  mode === "development" ||
+  mode === "dev" ||
+  isLocalBrowser;
 
 function getBrowserOriginBase() {
   if (typeof window === "undefined") {
@@ -14,12 +23,17 @@ function getBrowserOriginBase() {
 function createDefaultApiBases() {
   const bases = [];
   const browserOriginBase = getBrowserOriginBase();
-  const startPort = Math.min(apiPortStart, apiPortEnd);
-  const endPort = Math.max(apiPortStart, apiPortEnd);
 
   if (browserOriginBase) {
     bases.push(browserOriginBase);
   }
+
+  if (!isDev) {
+    return bases;
+  }
+
+  const startPort = Math.min(apiPortStart, apiPortEnd);
+  const endPort = Math.max(apiPortStart, apiPortEnd);
 
   for (let port = startPort; port <= endPort; port += 1) {
     bases.push(`http://127.0.0.1:${port}`, `http://localhost:${port}`);
