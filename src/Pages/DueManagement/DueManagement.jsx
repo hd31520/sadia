@@ -115,6 +115,27 @@ function DueManagement() {
     setCollectOpen(true);
   };
 
+  const openCollectFromSale = (sale) => {
+    const due = Number(sale.due_amount || 0);
+    const customerId = Number(sale.customer_id || 0);
+    if (!customerId) {
+      setCollectError("This invoice is not linked to a customer.");
+      return;
+    }
+
+    setCollectError("");
+    setCollectForm({
+      customer_id: String(customerId),
+      sale_id: String(sale.id),
+      customer_name: sale.customer_name || "Customer",
+      reference: sale.invoice_no || `INV-${sale.id}`,
+      max_due: String(due.toFixed(2)),
+      amount: String(due.toFixed(2)),
+      note: `Invoice due collection for ${sale.invoice_no || `sale ${sale.id}`}`,
+    });
+    setCollectOpen(true);
+  };
+
   const handleCollectChange = (event) => {
     const { name, value } = event.target;
     setCollectForm((prev) => ({ ...prev, [name]: value }));
@@ -381,6 +402,14 @@ function DueManagement() {
     });
   }, [salesDue, searchTerm]);
 
+  const formatSaleSourceLabel = (value) => {
+    const normalized = String(value || "").toLowerCase();
+    if (["card", "cart", "checkout", "pos"].includes(normalized)) {
+      return "cart";
+    }
+    return normalized || "sale";
+  };
+
   return (
     <SectionPage
       title="Due Management"
@@ -417,7 +446,7 @@ function DueManagement() {
           type="search"
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
-          placeholder="Search customer, phone, address, due..."
+          placeholder="Search invoice, customer, phone, address, due..."
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:max-w-sm"
         />
         <Dialog
@@ -523,6 +552,96 @@ function DueManagement() {
             </form>
           </DialogContent>
         </Dialog>
+      </div>
+
+      <div className="rounded-2xl border border-border/60 bg-card/70 p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Invoice Due History</h3>
+            <p className="text-xs text-muted-foreground">Active and cleared invoice dues stay visible here.</p>
+          </div>
+          <span className="rounded-full border border-border/60 bg-muted/20 px-3 py-1 text-xs text-muted-foreground">
+            {filteredSalesDue.length} invoices
+          </span>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-border/60">
+          <table className="w-full min-w-[56rem] text-sm">
+            <thead className="bg-muted/30 text-left">
+              <tr>
+                <th className="px-3 py-2">Invoice</th>
+                <th className="px-3 py-2">Customer</th>
+                <th className="px-3 py-2">Source</th>
+                <th className="px-3 py-2">Sale Date</th>
+                <th className="px-3 py-2">Total</th>
+                <th className="px-3 py-2">Paid</th>
+                <th className="px-3 py-2">Due</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredSalesDue.map((sale) => (
+                <tr key={sale.id} className="border-t border-border/50">
+                  <td className="px-3 py-2 font-medium">{sale.invoice_no || `INV-${sale.id}`}</td>
+                  <td className="px-3 py-2">{sale.customer_name || "Walk-in customer"}</td>
+                  <td className="px-3 py-2 capitalize">{formatSaleSourceLabel(sale.sale_source)}</td>
+                  <td className="px-3 py-2">
+                    {sale.sale_date ? new Date(sale.sale_date).toLocaleString() : "-"}
+                  </td>
+                  <td className="px-3 py-2">{formatCurrency(sale.total_amount)}</td>
+                  <td className="px-3 py-2">{formatCurrency(sale.paid_amount)}</td>
+                  <td className="px-3 py-2 font-medium">{formatCurrency(sale.due_amount)}</td>
+                  <td className="px-3 py-2">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                        Number(sale.due_amount || 0) > 0
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-emerald-100 text-emerald-800"
+                      }`}
+                    >
+                      {Number(sale.due_amount || 0) > 0 ? "Active Due" : "Cleared History"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openCollectFromSale(sale)}
+                        disabled={Number(sale.due_amount || 0) <= 0 || !Number(sale.customer_id || 0)}
+                        className="rounded-md border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Collect
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openHistoryDialog(sale)}
+                        disabled={!Number(sale.customer_id || 0)}
+                        className="rounded-md border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        History
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => printDueRowMemo(sale)}
+                        className="rounded-md border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                      >
+                        Print
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!loading && filteredSalesDue.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No invoice due history records found.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-border/60 bg-card/70 p-4">
