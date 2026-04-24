@@ -130,10 +130,6 @@ async function requestWithBaseFallback(path, options, onNetworkErrorMessage) {
   for (const base of getCandidateBases()) {
     try {
       const response = await fetch(`${base}${path}`, options);
-      if (response.status === 404) {
-        continue;
-      }
-
       // In dev, hitting the frontend origin can return index.html for unknown /api routes.
       // Treat HTML as a wrong target so we can continue trying actual backend bases.
       if (path.startsWith("/api/") && isHtmlResponse(response)) {

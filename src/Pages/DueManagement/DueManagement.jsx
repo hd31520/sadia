@@ -32,6 +32,7 @@ function DueManagement() {
     customer_id: "",
     sale_id: "",
     customer_name: "",
+    customer_address: "",
     reference: "",
     max_due: "0",
     amount: "",
@@ -86,6 +87,7 @@ function DueManagement() {
       customer_id: "",
       sale_id: "",
       customer_name: "",
+      customer_address: "",
       reference: "",
       max_due: "0",
       amount: "",
@@ -107,6 +109,7 @@ function DueManagement() {
       customer_id: String(customer.id),
       sale_id: "",
       customer_name: customer.name || "Customer",
+      customer_address: customer.address || "",
       reference: `Ledger-${customer.id}`,
       max_due: String(due.toFixed(2)),
       amount: String(due.toFixed(2)),
@@ -118,6 +121,7 @@ function DueManagement() {
   const openCollectFromSale = (sale) => {
     const due = Number(sale.due_amount || 0);
     const customerId = Number(sale.customer_id || 0);
+    const matchedCustomer = customers.find((customer) => Number(customer.id) === customerId);
     if (!customerId) {
       setCollectError("This invoice is not linked to a customer.");
       return;
@@ -127,7 +131,8 @@ function DueManagement() {
     setCollectForm({
       customer_id: String(customerId),
       sale_id: String(sale.id),
-      customer_name: sale.customer_name || "Customer",
+      customer_name: sale.customer_name || matchedCustomer?.name || `Customer #${customerId}`,
+      customer_address: sale.customer_address || matchedCustomer?.address || "",
       reference: sale.invoice_no || `INV-${sale.id}`,
       max_due: String(due.toFixed(2)),
       amount: String(due.toFixed(2)),
@@ -202,6 +207,8 @@ function DueManagement() {
       const payload = await apiPost("/api/payments", {
         customer_id: customerId,
         sale_id: saleId,
+        customer_name: collectForm.customer_name || null,
+        customer_address: collectForm.customer_address || null,
         amount,
         note: collectForm.note.trim() || null,
       });
