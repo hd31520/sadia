@@ -1,1 +1,0 @@
-var e={piece:`Piece`,dozen:`Dozen`,set:`Set`,kg:`Kg`,gram:`Gram`,liter:`Liter`,litre:`Litre`,ml:`Ml`,box:`Box`,pair:`Pair`,foot:`Foot`,inch:`Inch`,packet:`Packet`,bundle:`Bundle`,roll:`Roll`},t=Object.entries(e).map(([e,t])=>({value:e,label:t}));function n(t){return e[String(t||`piece`).toLowerCase()]||e.piece}export{n,t};

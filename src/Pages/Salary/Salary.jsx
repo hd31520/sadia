@@ -31,10 +31,10 @@ function Salary() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
 
-  const refreshWorkers = async () => {
-    const workerPayload = await apiGet("/api/users/workers");
+  const refreshWorkers = useCallback(async () => {
+    const workerPayload = await apiGet(`/api/users/workers?month=${historyMonth}`);
     setWorkers(workerPayload || []);
-  };
+  }, [historyMonth]);
 
   const refreshSalaryHistory = useCallback(async () => {
     try {
@@ -61,7 +61,7 @@ function Salary() {
     const loadSalaryData = async () => {
       try {
         setLoading(true);
-        const workerPayload = await apiGet("/api/users/workers");
+        const workerPayload = await apiGet(`/api/users/workers?month=${historyMonth}`);
 
         if (active) {
           setWorkers(workerPayload || []);
@@ -83,7 +83,7 @@ function Salary() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [historyMonth]);
 
   useEffect(() => {
     refreshSalaryHistory();
@@ -97,6 +97,7 @@ function Salary() {
         monthSalary: Number(worker.month_salary || 0),
         salaryPaid: Number(worker.salary_paid || 0),
         salaryDue: Number(worker.salary_due || 0),
+        totalSalaryDue: Number(worker.total_salary_due || worker.salary_due || 0),
       })),
     [workers]
   );
@@ -115,6 +116,7 @@ function Salary() {
         String(worker.monthSalary ?? ""),
         String(worker.salaryPaid ?? ""),
         String(worker.salaryDue ?? ""),
+        String(worker.totalSalaryDue ?? ""),
         String(worker.workUnits ?? ""),
       ];
 
@@ -126,16 +128,18 @@ function Salary() {
     const monthSalaryTotal = payrollRows.reduce((sum, worker) => sum + worker.monthSalary, 0);
     const salaryPaidTotal = payrollRows.reduce((sum, worker) => sum + worker.salaryPaid, 0);
     const salaryDueTotal = payrollRows.reduce((sum, worker) => sum + worker.salaryDue, 0);
+    const totalDueWithPrevious = payrollRows.reduce((sum, worker) => sum + worker.totalSalaryDue, 0);
     const fullyPaidWorkers = payrollRows.filter((worker) => worker.monthSalary > 0 && worker.salaryDue <= 0).length;
 
     return [
       { label: "Total Workers", value: String(workers.length), hint: "Registered worker accounts" },
-      { label: "Payroll Total", value: formatCurrency(monthSalaryTotal), hint: "Current month salary across all workers" },
-      { label: "Salary Paid", value: formatCurrency(salaryPaidTotal), hint: "Payments recorded this month" },
-      { label: "Salary Due", value: formatCurrency(salaryDueTotal), hint: "Unpaid current month salary" },
+      { label: "Payroll Total", value: formatCurrency(monthSalaryTotal), hint: `Salary for ${historyMonth}` },
+      { label: "Salary Paid", value: formatCurrency(salaryPaidTotal), hint: `Payments recorded in ${historyMonth}` },
+      { label: "Salary Due", value: formatCurrency(salaryDueTotal), hint: "Unpaid amount for selected month" },
+      { label: "Total Due", value: formatCurrency(totalDueWithPrevious), hint: "Selected month due plus previous unpaid salary" },
       { label: "Fully Paid", value: String(fullyPaidWorkers), hint: "Workers with no remaining salary due" },
     ];
-  }, [payrollRows, workers.length]);
+  }, [historyMonth, payrollRows, workers.length]);
 
   const printSalaryReceipt = async (payment) => {
     const printableHtml = `
@@ -271,7 +275,7 @@ function Salary() {
             type="search"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search worker, username, paid, due..."
+            placeholder="Search worker, username, paid, due, total..."
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground xl:max-w-sm"
           />
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -305,6 +309,9 @@ function Salary() {
               <div className="rounded-md border border-border/60 bg-muted/20 p-3 text-sm">
                 <p className="font-medium text-foreground">{selectedWorker?.name || "Worker"}</p>
                 <p className="text-xs text-muted-foreground">Month due: {formatCurrency(selectedWorker?.salaryDue || 0)}</p>
+                <p className="text-xs text-muted-foreground">
+                  Total due with previous months: {formatCurrency(selectedWorker?.totalSalaryDue || 0)}
+                </p>
               </div>
 
               <label className="block text-xs text-muted-foreground">
@@ -455,16 +462,17 @@ function Salary() {
             <table className="w-full table-fixed text-sm">
               <thead className="bg-muted/30 text-left">
                 <tr>
-                  <th className="w-[16%] px-3 py-2">Worker</th>
-                  <th className="w-[10%] px-3 py-2">Daily Salary</th>
-                  <th className="w-[10%] px-3 py-2">Monthly Salary</th>
-                  <th className="w-[8%] px-3 py-2">Present</th>
-                  <th className="w-[8%] px-3 py-2">Half Day</th>
+                  <th className="w-[15%] px-3 py-2">Worker</th>
+                  <th className="w-[9%] px-3 py-2">Daily</th>
+                  <th className="w-[10%] px-3 py-2">Monthly</th>
+                  <th className="w-[7%] px-3 py-2">Present</th>
+                  <th className="w-[7%] px-3 py-2">Half</th>
                   <th className="w-[8%] px-3 py-2">Weekend</th>
-                  <th className="w-[10%] px-3 py-2">Half Weekend</th>
-                  <th className="w-[8%] px-3 py-2">Work Units</th>
-                  <th className="w-[10%] px-3 py-2">Paid</th>
-                  <th className="w-[10%] px-3 py-2">Due</th>
+                  <th className="w-[9%] px-3 py-2">Half W.</th>
+                  <th className="w-[8%] px-3 py-2">Units</th>
+                  <th className="w-[9%] px-3 py-2">Paid</th>
+                  <th className="w-[9%] px-3 py-2">Due</th>
+                  <th className="w-[10%] px-3 py-2">Total</th>
                   <th className="w-[12%] px-3 py-2">Action</th>
                 </tr>
               </thead>
@@ -484,6 +492,7 @@ function Salary() {
                     <td className="px-3 py-2 whitespace-nowrap">{Number(worker.workUnits || 0).toFixed(1)}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{formatCurrency(worker.salaryPaid)}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{formatCurrency(worker.salaryDue)}</td>
+                    <td className="px-3 py-2 whitespace-nowrap font-medium">{formatCurrency(worker.totalSalaryDue)}</td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
                         <button
@@ -507,7 +516,7 @@ function Salary() {
                 ))}
                 {!filteredPayrollRows.length ? (
                   <tr>
-                    <td colSpan={11} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    <td colSpan={12} className="px-3 py-6 text-center text-sm text-muted-foreground">
                       No workers found.
                     </td>
                   </tr>
@@ -550,6 +559,10 @@ function Salary() {
                   <div className="rounded-md bg-muted/40 p-2">
                     <span className="block text-[11px] uppercase">Paid / Due</span>
                     <span className="text-sm text-foreground">{formatCurrency(worker.salaryPaid)} / {formatCurrency(worker.salaryDue)}</span>
+                  </div>
+                  <div className="col-span-2 rounded-md bg-muted/40 p-2">
+                    <span className="block text-[11px] uppercase">Total Due</span>
+                    <span className="text-sm font-medium text-foreground">{formatCurrency(worker.totalSalaryDue)}</span>
                   </div>
                 </div>
 

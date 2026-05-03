@@ -80,15 +80,15 @@ function Workers() {
   const currentUserId = useMemo(() => Number(getStoredUser()?.id || 0), []);
   const isAdmin = userRole === "admin";
 
-  const refreshWorkers = async () => {
+  const refreshWorkers = useCallback(async () => {
     try {
-      const payload = await apiGet("/api/users/all");
+      const payload = await apiGet(`/api/users/all?month=${summaryMonth}`);
       setWorkers(payload || []);
     } catch {
-      const fallbackPayload = await apiGet("/api/users/workers");
+      const fallbackPayload = await apiGet(`/api/users/workers?month=${summaryMonth}`);
       setWorkers(fallbackPayload || []);
     }
-  };
+  }, [summaryMonth]);
 
   const refreshAttendanceSummaries = useCallback(async () => {
     try {
@@ -142,7 +142,7 @@ function Workers() {
     return () => {
       active = false;
     };
-  }, [isAdmin]);
+  }, [isAdmin, refreshWorkers]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -169,7 +169,7 @@ function Workers() {
       {
         label: "Month Salary",
         value: formatCurrency(workers.reduce((sum, worker) => sum + Number(worker.month_salary || 0), 0)),
-        hint: "Current month payroll by attendance",
+        hint: `Payroll by attendance for ${summaryMonth}`,
       },
       { label: "Present", value: String(presentMonth), hint: "Current month present + late" },
       { label: "Half Day", value: String(halfDayMonth), hint: "Current month half day count" },
