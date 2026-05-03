@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import SectionPage from "../Shared/SectionPage";
-import { apiGet, apiPost, formatCurrency } from "../../lib/api";
+import { apiDelete, apiGet, apiPost, apiPut, formatCurrency, getStoredUser } from "../../lib/api";
 import {
   createSingleMemoItem,
   formatMemoAmount,
@@ -20,6 +20,7 @@ function DueManagement() {
   const [customers, setCustomers] = useState([]);
   const [salesDue, setSalesDue] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
@@ -50,13 +51,31 @@ function DueManagement() {
   const [historyError, setHistoryError] = useState("");
   const [historyRows, setHistoryRows] = useState([]);
   const [historyCustomer, setHistoryCustomer] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editType, setEditType] = useState("");
+  const [editTarget, setEditTarget] = useState(null);
+  const [editError, setEditError] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteType, setDeleteType] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    phone: "",
+    address: "",
+    due_date: "",
+    due_amount: "",
+  });
+  const canManageDue = getStoredUser()?.role === "admin";
 
   const loadDueCustomers = async () => {
     setLoading(true);
     try {
       const [customerPayload, salesPayload] = await Promise.all([
-        apiGet("/api/customers?history_due=true"),
-        apiGet("/api/sales?due_history=true"),
+        apiGet(`/api/customers?history_due=true&month=${selectedMonth}`),
+        apiGet(`/api/sales?due_history=true&month=${selectedMonth}`),
       ]);
       setCustomers(customerPayload || []);
       setSalesDue(salesPayload || []);
@@ -70,11 +89,16 @@ function DueManagement() {
 
   useEffect(() => {
     loadDueCustomers();
-  }, []);
+  }, [selectedMonth]);
 
   const handleFormChange = (event) => {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditFormChange = (event) => {
+    const { name, value } = event.target;
+    setEditForm((prev) => ({ ...prev, [name]: value }));
   };
 
   const resetForm = () => {
@@ -345,6 +369,94 @@ function DueManagement() {
     }
   };
 
+  const openEditDueDialog = (type, entry) => {
+    setEditType(type);
+    setEditTarget(entry);
+    setEditError("");
+    setEditForm({
+      name: entry.customer_name || entry.name || "",
+      phone: entry.phone || entry.customer_phone || "",
+      address: entry.address || entry.customer_address || "",
+      due_date: entry.due_date ? String(entry.due_date).slice(0, 10) : "",
+      due_amount: String(Number(entry.due_amount || 0)),
+    });
+    setEditOpen(true);
+  };
+
+  const openDeleteDueDialog = (type, entry) => {
+    setDeleteType(type);
+    setDeleteTarget(entry);
+    setDeleteError("");
+    setDeleteOpen(true);
+  };
+
+  const handleUpdateDue = async (event) => {
+    event.preventDefault();
+    if (!editTarget) {
+      return;
+    }
+
+    const parsedDue = Number(editForm.due_amount || 0);
+    if (Number.isNaN(parsedDue) || parsedDue < 0) {
+      setEditError("Enter a valid due amount.");
+      return;
+    }
+
+    try {
+      setEditing(true);
+      if (editType === "sale") {
+        await apiPut(`/api/sales/${editTarget.id}/due`, {
+          due_amount: parsedDue,
+        });
+      } else {
+        if (!editForm.name.trim()) {
+          setEditError("Customer name is required.");
+          return;
+        }
+        await apiPut(`/api/customers/${editTarget.id}`, {
+          name: editForm.name.trim(),
+          phone: editForm.phone.trim() || null,
+          address: editForm.address.trim() || null,
+          due_date: editForm.due_date || null,
+          due_amount: parsedDue,
+        });
+      }
+
+      await loadDueCustomers();
+      setEditOpen(false);
+      setEditTarget(null);
+      setEditType("");
+    } catch (err) {
+      setEditError(err.message || "Failed to update due record");
+    } finally {
+      setEditing(false);
+    }
+  };
+
+  const handleDeleteDue = async () => {
+    if (!deleteTarget) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      if (deleteType === "sale") {
+        await apiDelete(`/api/sales/${deleteTarget.id}`);
+      } else {
+        await apiDelete(`/api/customers/${deleteTarget.id}`);
+      }
+
+      await loadDueCustomers();
+      setDeleteOpen(false);
+      setDeleteTarget(null);
+      setDeleteType("");
+    } catch (err) {
+      setDeleteError(err.message || "Failed to delete due record");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const stats = useMemo(() => {
     const totalLedgerDue = customers.reduce((acc, customer) => acc + Number(customer.due_amount || 0), 0);
     const totalInvoiceDue = salesDue.reduce((acc, sale) => acc + Number(sale.due_amount || 0), 0);
@@ -449,13 +561,21 @@ function DueManagement() {
       </div>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <input
-          type="search"
-          value={searchTerm}
-          onChange={(event) => setSearchTerm(event.target.value)}
-          placeholder="Search invoice, customer, phone, address, due..."
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:max-w-sm"
-        />
+        <div className="flex w-full flex-col gap-2 sm:max-w-2xl sm:flex-row">
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search invoice, customer, phone, address, due..."
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+          />
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={(event) => setSelectedMonth(event.target.value)}
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:w-44"
+          />
+        </div>
         <Dialog
           open={open}
           onOpenChange={(nextOpen) => {
@@ -635,6 +755,24 @@ function DueManagement() {
                       >
                         Print
                       </button>
+                      {canManageDue ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openEditDueDialog("sale", sale)}
+                            className="rounded-md border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openDeleteDueDialog("sale", sale)}
+                            className="rounded-md border border-destructive/50 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -720,6 +858,24 @@ function DueManagement() {
                       >
                         Print
                       </button>
+                      {canManageDue ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openEditDueDialog("customer", customer)}
+                            className="rounded-md border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openDeleteDueDialog("customer", customer)}
+                            className="rounded-md border border-destructive/50 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -735,6 +891,158 @@ function DueManagement() {
           </table>
         </div>
       </div>
+
+      <Dialog
+        open={editOpen}
+        onOpenChange={(nextOpen) => {
+          setEditOpen(nextOpen);
+          if (!nextOpen) {
+            setEditError("");
+            setEditTarget(null);
+            setEditType("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Due</DialogTitle>
+            <DialogDescription>
+              {editType === "sale"
+                ? "Update invoice due amount. Paid amount will be adjusted from the invoice total."
+                : "Update customer ledger due and contact details."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleUpdateDue} className="space-y-3">
+            {editType === "customer" ? (
+              <>
+                <label className="block text-xs text-muted-foreground">
+                  Customer Name
+                  <input
+                    name="name"
+                    value={editForm.name}
+                    onChange={handleEditFormChange}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                    required
+                  />
+                </label>
+
+                <label className="block text-xs text-muted-foreground">
+                  Customer Number
+                  <input
+                    name="phone"
+                    value={editForm.phone}
+                    onChange={handleEditFormChange}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                  />
+                </label>
+
+                <label className="block text-xs text-muted-foreground">
+                  Address
+                  <input
+                    name="address"
+                    value={editForm.address}
+                    onChange={handleEditFormChange}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                  />
+                </label>
+
+                <label className="block text-xs text-muted-foreground">
+                  Due Date
+                  <input
+                    name="due_date"
+                    type="date"
+                    value={editForm.due_date}
+                    onChange={handleEditFormChange}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                  />
+                </label>
+              </>
+            ) : (
+              <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm">
+                <p className="text-xs text-muted-foreground">Invoice</p>
+                <p className="font-medium">{editTarget?.invoice_no || `INV-${editTarget?.id || ""}`}</p>
+              </div>
+            )}
+
+            <label className="block text-xs text-muted-foreground">
+              Due Amount
+              <input
+                name="due_amount"
+                type="number"
+                min="0"
+                step="0.01"
+                value={editForm.due_amount}
+                onChange={handleEditFormChange}
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                required
+              />
+            </label>
+
+            {editError ? <p className="text-sm text-destructive">{editError}</p> : null}
+
+            <DialogFooter>
+              <button
+                type="button"
+                onClick={() => setEditOpen(false)}
+                className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={editing}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+              >
+                {editing ? "Saving..." : "Save"}
+              </button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(nextOpen) => {
+          setDeleteOpen(nextOpen);
+          if (!nextOpen) {
+            setDeleteError("");
+            setDeleteTarget(null);
+            setDeleteType("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Due Record</DialogTitle>
+            <DialogDescription>
+              {deleteType === "sale"
+                ? "Delete this invoice due record. The server will block deletion if payment history exists."
+                : "Delete this customer ledger record. The server will block deletion if outstanding due remains."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(false)}
+              className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteDue}
+              disabled={deleting}
+              className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground disabled:opacity-60"
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={collectOpen}

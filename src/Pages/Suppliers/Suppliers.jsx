@@ -14,6 +14,7 @@ import {
 function Suppliers() {
   const [suppliers, setSuppliers] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [submitError, setSubmitError] = useState("");
@@ -43,7 +44,7 @@ function Suppliers() {
     const loadSuppliers = async () => {
       try {
         setLoading(true);
-        const payload = await apiGet("/api/suppliers");
+        const payload = await apiGet(`/api/suppliers?month=${selectedMonth}`);
         if (active) {
           setSuppliers(payload);
           setError("");
@@ -64,7 +65,7 @@ function Suppliers() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [selectedMonth]);
 
   const stats = useMemo(() => {
     const totalAmount = suppliers.reduce((sum, supplier) => sum + Number(supplier.total_amount || 0), 0);
@@ -214,13 +215,21 @@ function Suppliers() {
     >
       <div className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <input
-            type="search"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search supplier, company, phone..."
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:max-w-sm"
-          />
+          <div className="flex w-full flex-col gap-2 sm:max-w-2xl sm:flex-row">
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search supplier, company, phone..."
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+            />
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:w-44"
+            />
+          </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import SectionPage from "../Shared/SectionPage";
-import { apiDelete, apiGet, apiPost, formatCurrency, getStoredUser } from "../../lib/api";
+import { apiDelete, apiGet, apiPost, apiPut, formatCurrency, getStoredUser } from "../../lib/api";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import {
 function Customers() {
   const [customers, setCustomers] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
@@ -22,8 +23,16 @@ function Customers() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editing, setEditing] = useState(false);
   const [activeCustomer, setActiveCustomer] = useState(null);
   const [form, setForm] = useState({
+    name: "",
+    phone: "",
+    address: "",
+  });
+  const [editForm, setEditForm] = useState({
     name: "",
     phone: "",
     address: "",
@@ -36,7 +45,7 @@ function Customers() {
     const loadCustomers = async () => {
       try {
         setLoading(true);
-        const payload = await apiGet("/api/customers");
+        const payload = await apiGet(`/api/customers?month=${selectedMonth}`);
         if (active) {
           setCustomers(payload);
           setError("");
@@ -57,7 +66,7 @@ function Customers() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [selectedMonth]);
 
   const stats = useMemo(() => {
     const dueCustomers = customers.filter((customer) => Number(customer.due_amount || 0) > 0);
@@ -93,6 +102,11 @@ function Customers() {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleEditChange = (event) => {
+    const { name, value } = event.target;
+    setEditForm((prev) => ({ ...prev, [name]: value }));
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setSubmitError("");
@@ -124,6 +138,47 @@ function Customers() {
     setActiveCustomer(customer);
     setDeleteError("");
     setDeleteOpen(true);
+  };
+
+  const openEditDialog = (customer) => {
+    setActiveCustomer(customer);
+    setEditForm({
+      name: customer.name || "",
+      phone: customer.phone || "",
+      address: customer.address || "",
+    });
+    setEditError("");
+    setEditOpen(true);
+  };
+
+  const handleUpdateCustomer = async (event) => {
+    event.preventDefault();
+    if (!activeCustomer) {
+      return;
+    }
+
+    if (!editForm.name.trim()) {
+      setEditError("Customer name is required.");
+      return;
+    }
+
+    try {
+      setEditing(true);
+      const updated = await apiPut(`/api/customers/${activeCustomer.id}`, {
+        name: editForm.name.trim(),
+        phone: editForm.phone.trim() || null,
+        address: editForm.address.trim() || null,
+      });
+      setCustomers((prev) =>
+        prev.map((customer) => (customer.id === activeCustomer.id ? { ...customer, ...updated } : customer))
+      );
+      setEditOpen(false);
+      setActiveCustomer(null);
+    } catch (err) {
+      setEditError(err.message || "Failed to update customer");
+    } finally {
+      setEditing(false);
+    }
   };
 
   const handleDeleteCustomer = async () => {
@@ -174,13 +229,21 @@ function Customers() {
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <input
-            type="search"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search name, phone, address, due..."
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:max-w-sm"
-          />
+          <div className="flex w-full flex-col gap-2 sm:max-w-2xl sm:flex-row">
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search name, phone, address, due..."
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+            />
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:w-44"
+            />
+          </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
@@ -253,6 +316,77 @@ function Customers() {
         </div>
 
         <Dialog
+          open={editOpen}
+          onOpenChange={(nextOpen) => {
+            setEditOpen(nextOpen);
+            if (!nextOpen) {
+              setEditError("");
+              setActiveCustomer(null);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Edit Customer</DialogTitle>
+              <DialogDescription>Update customer name, phone, and address.</DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleUpdateCustomer} className="space-y-3">
+              <label className="block text-xs text-muted-foreground">
+                Name
+                <input
+                  name="name"
+                  value={editForm.name}
+                  onChange={handleEditChange}
+                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                  required
+                />
+              </label>
+
+              <label className="block text-xs text-muted-foreground">
+                Phone
+                <input
+                  name="phone"
+                  value={editForm.phone}
+                  onChange={handleEditChange}
+                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                />
+              </label>
+
+              <label className="block text-xs text-muted-foreground">
+                Address
+                <textarea
+                  name="address"
+                  value={editForm.address}
+                  onChange={handleEditChange}
+                  rows={3}
+                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                />
+              </label>
+
+              {editError ? <p className="text-sm text-destructive">{editError}</p> : null}
+
+              <DialogFooter>
+                <button
+                  type="button"
+                  onClick={() => setEditOpen(false)}
+                  className="rounded-md border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editing}
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+                >
+                  {editing ? "Saving..." : "Save"}
+                </button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
           open={deleteOpen}
           onOpenChange={(nextOpen) => {
             setDeleteOpen(nextOpen);
@@ -312,13 +446,22 @@ function Customers() {
                 <td className="px-3 py-2">{formatCurrency(customer.due_amount)}</td>
                 {canManageCustomers ? (
                   <td className="px-3 py-2">
-                    <button
-                      type="button"
-                      onClick={() => openDeleteDialog(customer)}
-                      className="rounded-md border border-destructive/50 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditDialog(customer)}
+                        className="rounded-md border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openDeleteDialog(customer)}
+                        className="rounded-md border border-destructive/50 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 ) : null}
               </tr>
