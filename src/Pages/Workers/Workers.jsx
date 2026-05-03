@@ -50,7 +50,9 @@ function Workers() {
   const [deleting, setDeleting] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
-  const [summaryMonth, setSummaryMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [summaryMonth, setSummaryMonth] = useState(
+    () => localStorage.getItem("pos_default_month") || new Date().toISOString().slice(0, 7)
+  );
   const [summaryYear, setSummaryYear] = useState(() => String(new Date().getFullYear()));
   const [monthlySummaryRows, setMonthlySummaryRows] = useState([]);
   const [yearlySummaryRows, setYearlySummaryRows] = useState([]);

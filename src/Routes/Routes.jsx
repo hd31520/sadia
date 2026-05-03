@@ -23,6 +23,7 @@ const WorkerAttendanceHistory = lazy(() => import("../Pages/Workers/WorkerAttend
 const CartSale = lazy(() => import("../Pages/Card/Card"));
 const Login = lazy(() => import("../Pages/Auth/Login"));
 const Report = lazy(() => import("../Pages/Report/Report"));
+const Settings = lazy(() => import("../Pages/Settings/Settings"));
 
 function RouteFallback() {
     return (
@@ -118,6 +119,10 @@ const router = createHashRouter([
             {
                 path: "report",
                 element: withSuspense(<Report />),
+            },
+            {
+                path: "settings",
+                element: withSuspense(<Settings />),
             },
         ],
     },

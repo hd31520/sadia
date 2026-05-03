@@ -23,7 +23,9 @@ function Salary() {
   const [payForm, setPayForm] = useState({ amount: "", note: "" });
   const [payError, setPayError] = useState("");
   const [paySubmitting, setPaySubmitting] = useState(false);
-  const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [historyMonth, setHistoryMonth] = useState(
+    () => localStorage.getItem("pos_default_month") || new Date().toISOString().slice(0, 7)
+  );
   const [historyYear, setHistoryYear] = useState(() => String(new Date().getFullYear()));
   const [monthlyAttendanceRows, setMonthlyAttendanceRows] = useState([]);
   const [yearlyAttendanceRows, setYearlyAttendanceRows] = useState([]);

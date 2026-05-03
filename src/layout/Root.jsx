@@ -15,6 +15,7 @@ import {
   MoonStar,
   LogOut,
   SunMedium,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { cn } from "../lib/utils";
@@ -34,6 +35,7 @@ const navItems = [
   { to: "/worker", label: "Worker", icon: UserCog },
   { to: "/salary", label: "Salary", icon: BadgeDollarSign },
   { to: "/report", label: "Report", icon: LayoutDashboard }, // You can change the icon
+  { to: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
 function Root() {
